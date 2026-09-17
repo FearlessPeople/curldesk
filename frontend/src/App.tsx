@@ -9,7 +9,7 @@ import { Button } from '@/components/button'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/sidebar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/tabs'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/resizable'
-import { WorkspaceService } from '../bindings/curldesk'
+import { CurlRunner, WorkspaceService } from '../bindings/curldesk'
 import type { WorkspaceEntry } from '../bindings/curldesk'
 
 type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
@@ -35,6 +35,8 @@ export default function App() {
   const [requests, setRequests] = useState<{ value: string; label: string; command: string }[]>([])
   const [activeRequest, setActiveRequest] = useState('')
   const [saveStatus, setSaveStatus] = useState<Record<string, 'saving' | 'saved'>>({})
+  const [runOutput, setRunOutput] = useState('')
+  const [runStatus, setRunStatus] = useState<'ready' | 'running' | 'failed'>('ready')
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const syncOpenRequests = async () => {
@@ -95,6 +97,22 @@ export default function App() {
     }, 600)
   }
 
+  const runCurrentRequest = async () => {
+    const request = requests.find((item) => item.value === activeRequest)
+    if (!request || runStatus === 'running') return
+    setRunOutput('')
+    setRunStatus('running')
+    try {
+      const result = await CurlRunner.RunCurl(request.command)
+      setRunOutput(result.output || `Process exited with code ${result.exitCode}.`)
+      setRunStatus(result.exitCode === 0 ? 'ready' : 'failed')
+    } catch (error) {
+      console.error('Unable to run curl command', error)
+      setRunOutput(error instanceof Error ? error.message : 'Unable to run curl command.')
+      setRunStatus('failed')
+    }
+  }
+
   return (
     <div className="flex h-screen flex-col">
       <header
@@ -142,7 +160,9 @@ export default function App() {
                   )
                 })}
               </TabsList>
-              <Button size="sm" className="ml-auto"><Play /> Run</Button>
+              <Button size="sm" className="ml-auto" onClick={() => void runCurrentRequest()} disabled={!activeRequest || runStatus === 'running'}>
+                <Play /> {runStatus === 'running' ? 'Running…' : 'Run'}
+              </Button>
             </div>
 
             {requests.length === 0 && (
@@ -186,14 +206,16 @@ export default function App() {
                           >
                             <LayoutPanelLeft />
                           </Button>
-                          <span className="text-xs text-muted-foreground">{saveStatus[request.value] === 'saving' ? 'Saving…' : saveStatus[request.value] === 'saved' ? 'Saved' : 'Ready'}</span>
+                          <span className={`text-xs ${runStatus === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}>
+                            {runStatus === 'running' ? 'Running…' : runStatus === 'failed' ? 'Failed' : saveStatus[request.value] === 'saving' ? 'Saving…' : saveStatus[request.value] === 'saved' ? 'Saved' : 'Ready'}
+                          </span>
                         </div>
                       </div>
                       <div className="flex min-h-0 flex-1 overflow-hidden">
                         <div className="w-10 shrink-0 select-none border-r px-1 py-4 text-right font-mono text-xs leading-6 text-muted-foreground">
                           <div>1</div>
                         </div>
-                        <pre className="min-h-0 flex-1 overflow-auto p-4 font-mono text-sm text-muted-foreground">Run a curl command to see output here.</pre>
+                        <pre className="min-h-0 flex-1 overflow-auto p-4 font-mono text-sm text-muted-foreground">{runOutput || 'Run a curl command to see output here.'}</pre>
                       </div>
                     </section>
                   </ResizablePanel>

@@ -20,6 +20,7 @@ func main() {
 		Icon:        appIcon,
 		Services: []application.Service{
 			application.NewService(&WorkspaceService{}),
+			application.NewService(&CurlRunner{}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

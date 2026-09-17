@@ -8,3 +8,8 @@ export interface WorkspaceEntry {
     "isDir": boolean;
     "size": number;
 }
+
+export interface RunResult {
+    "output": string;
+    "exitCode": number;
+}
