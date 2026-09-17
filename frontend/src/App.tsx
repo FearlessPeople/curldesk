@@ -15,6 +15,7 @@ import { CurlRunner, WorkspaceService } from '../bindings/curldesk'
 import type { WorkspaceEntry } from '../bindings/curldesk'
 
 type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
+const CURL_STREAM_EVENT = 'curldesk:curl:chunk'
 
 function detectMethod(command: string): RequestMethod {
   const explicitMethod = command.match(/(?:^|\s)(?:-X|--request)\s+["']?([A-Za-z]+)["']?/i)?.[1].toUpperCase()
@@ -74,6 +75,7 @@ export default function App() {
   const [outputView, setOutputView] = useState<'response' | 'headers'>('response')
   const [runInfo, setRunInfo] = useState<{ status: number; durationMs: number; requestSize: number; responseSize: number; headers: string } | null>(null)
   const runId = useRef(0)
+  const activeStreamId = useRef('')
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const displayOutput = formatOutput(runOutput || 'Run a curl command to see output here.')
@@ -109,6 +111,12 @@ export default function App() {
     const unsubscribe = Events.On('curldesk:collections-changed', () => { void syncOpenRequests() })
     return unsubscribe
   }, [])
+
+  useEffect(() => Events.On(CURL_STREAM_EVENT, (event) => {
+    const data = event.data as { runId?: string; chunk?: string } | undefined
+    if (!data || data.runId !== activeStreamId.current || !data.chunk) return
+    setRunOutput((current) => current + data.chunk)
+  }), [])
 
   useEffect(() => () => {
     Object.values(saveTimers.current).forEach((timer) => clearTimeout(timer))
@@ -158,13 +166,15 @@ export default function App() {
     const requestBlock = extractRequestBlock(command, startLine)
     if (!requestBlock) return
     const currentRunId = ++runId.current
+    const streamId = `${Date.now()}-${currentRunId}`
+    activeStreamId.current = streamId
     setRunOutput('')
     setRunInfo(null)
     setOutputView('response')
     setRunStatus('running')
     setRunningLine(startLine)
     try {
-      const result = await CurlRunner.RunCurl(requestBlock)
+      const result = await CurlRunner.RunCurlStream(requestBlock, streamId)
       if (runId.current !== currentRunId) return
       setRunOutput(result.output || `Process exited with code ${result.exitCode}.`)
       setRunInfo({
@@ -188,6 +198,7 @@ export default function App() {
   const stopRequest = async () => {
     if (runStatus !== 'running') return
     runId.current += 1
+    activeStreamId.current = ''
     setRunningLine(null)
     setRunStatus('ready')
     setRunOutput('Request stopped.')
@@ -257,8 +268,8 @@ export default function App() {
             {requests.map((request) => (
               <TabsContent key={request.value} value={request.value} className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
                 <ResizablePanelGroup orientation={layout} className="min-h-0 flex-1">
-                  <ResizablePanel defaultSize="68%" minSize="24%" className="resizable-panel">
-                    <section className="flex h-full min-h-0 flex-1 overflow-hidden">
+                  <ResizablePanel defaultSize="68%" minSize="24%" className="resizable-panel min-w-0 overflow-hidden">
+                    <section className="flex h-full min-h-0 min-w-0 flex-1 overflow-hidden">
                       <CurlEditor
                         value={request.command}
                         onChange={(command) => updateCommand(request.value, command)}
@@ -269,10 +280,10 @@ export default function App() {
                     </section>
                   </ResizablePanel>
                   <ResizableHandle withHandle />
-                  <ResizablePanel defaultSize="32%" minSize="18%" className="resizable-panel">
-                    <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-                      <div className="flex h-10 shrink-0 items-center justify-between border-t px-4">
-                        <div className="flex items-center gap-3">
+                  <ResizablePanel defaultSize="32%" minSize="18%" className="resizable-panel min-w-0 overflow-hidden">
+                    <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+                      <div className="relative flex h-10 min-w-0 shrink-0 items-center border-t px-4">
+                        <div className="flex min-w-0 shrink-0 items-center gap-3">
                           <div className="text-sm font-medium">Output</div>
                           <div className="flex items-center gap-1">
                             <Button
@@ -293,9 +304,9 @@ export default function App() {
                             </Button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="absolute right-4 top-1/2 z-10 flex min-w-0 -translate-y-1/2 items-center gap-2 bg-background pl-2">
                           {runInfo && (
-                            <div className="mr-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+                            <div className="mr-1 hidden items-center gap-2 text-[11px] text-muted-foreground 2xl:flex">
                               <span className={statusColor(runInfo.status)}>HTTP {runInfo.status || '—'}</span>
                               <span>{runInfo.durationMs} ms</span>
                               <span>↑ {formatBytes(runInfo.requestSize)}</span>
@@ -305,7 +316,7 @@ export default function App() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 rounded-md"
+                            className="h-7 w-7 shrink-0 rounded-md"
                             aria-label="复制输出"
                             onClick={() => void copyOutput()}
                             disabled={!runOutput}
@@ -315,7 +326,7 @@ export default function App() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className={`h-7 w-7 rounded-md ${layout === 'vertical' ? 'bg-muted text-foreground' : ''}`}
+                            className={`h-7 w-7 shrink-0 rounded-md ${layout === 'vertical' ? 'bg-muted text-foreground' : ''}`}
                             aria-label="上下布局"
                             aria-pressed={layout === 'vertical'}
                             onClick={() => setLayout('vertical')}
@@ -325,14 +336,14 @@ export default function App() {
                           <Button
                             variant="ghost"
                             size="icon"
-                            className={`h-7 w-7 rounded-md ${layout === 'horizontal' ? 'bg-muted text-foreground' : ''}`}
+                            className={`h-7 w-7 shrink-0 rounded-md ${layout === 'horizontal' ? 'bg-muted text-foreground' : ''}`}
                             aria-label="左右布局"
                             aria-pressed={layout === 'horizontal'}
                             onClick={() => setLayout('horizontal')}
                           >
                             <LayoutPanelLeft />
                           </Button>
-                          <span className={`text-xs ${runStatus === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}>
+                          <span className={`shrink-0 text-xs ${runStatus === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}>
                             {runStatus === 'running' ? 'Running…' : runStatus === 'failed' ? 'Failed' : saveStatus[request.value] === 'saving' ? 'Saving…' : saveStatus[request.value] === 'saved' ? 'Saved' : 'Ready'}
                           </span>
                         </div>

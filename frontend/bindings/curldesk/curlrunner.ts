@@ -7,6 +7,10 @@ export function RunCurl(command: string): $CancellablePromise<$models.RunResult>
     return $Call.ByName("main.CurlRunner.RunCurl", command);
 }
 
+export function RunCurlStream(command: string, runID: string): $CancellablePromise<$models.RunResult> {
+    return $Call.ByName("main.CurlRunner.RunCurlStream", command, runID);
+}
+
 export function StopCurl(): $CancellablePromise<void> {
     return $Call.ByName("main.CurlRunner.StopCurl");
 }

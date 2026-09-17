@@ -4,11 +4,21 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
+
+const curlStreamEvent = "curldesk:curl:chunk"
+
+type curlStreamChunk struct {
+	RunID string `json:"runId"`
+	Chunk string `json:"chunk"`
+}
 
 type RunResult struct {
 	Output          string `json:"output"`
@@ -70,6 +80,122 @@ func (r *CurlRunner) RunCurl(command string) (RunResult, error) {
 	}
 	log.Printf("[curl] finished with exit code %d (%d bytes)", result.ExitCode, len(result.Output))
 	return result, nil
+}
+
+func (r *CurlRunner) RunCurlStream(command, runID string) (RunResult, error) {
+	log.Printf("[curl] starting stream request (%d bytes)", len(command))
+	args, err := parseCurlCommand(command)
+	if err != nil {
+		return RunResult{}, err
+	}
+	headerFile, err := os.CreateTemp("", "curldesk-response-*.headers")
+	if err != nil {
+		return RunResult{}, fmt.Errorf("create response header file: %w", err)
+	}
+	headerPath := headerFile.Name()
+	if err := headerFile.Close(); err != nil {
+		os.Remove(headerPath)
+		return RunResult{}, fmt.Errorf("close response header file: %w", err)
+	}
+	defer os.Remove(headerPath)
+
+	args = append(args,
+		"--no-buffer", "--silent", "--show-error",
+		"--dump-header", headerPath,
+		// Keep curl's bookkeeping off stdout. SSE data must be forwarded byte-for-byte
+		// as soon as curl receives it; a write-out marker on stdout would otherwise
+		// force the stream writer to hold a suffix while looking for that marker.
+		"--write-out", "%{stderr}__CURLDESK_META__%{http_code}|%{time_total}|%{size_request}|%{size_download}",
+	)
+	executable := "curl"
+	if runtime.GOOS == "windows" {
+		executable = "curl.exe"
+	}
+	cmd := exec.Command(executable, args...)
+	r.setProcess(cmd)
+	defer r.clearProcess(cmd)
+
+	var stdout, stderr strings.Builder
+	streamOutput := &curlStreamWriter{runID: runID, output: &stdout}
+	cmd.Stdout = streamOutput
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); cmd.ProcessState == nil {
+		return RunResult{}, fmt.Errorf("curl executable not found: %w", err)
+	} else if err != nil {
+		log.Printf("[curl] stream exited with error: %v", err)
+	}
+
+	result := RunResult{ExitCode: cmd.ProcessState.ExitCode()}
+	result.Output = stdout.String()
+	result.Status, result.DurationMs, result.RequestSize, result.ResponseSize = parseCurlMetadata(stderr.String())
+	if headers, readErr := os.ReadFile(headerPath); readErr == nil {
+		result.ResponseHeaders = string(headers)
+	}
+	if result.ExitCode != 0 && stderr.Len() > 0 {
+		result.Output = strings.TrimSpace(result.Output + "\n" + stripCurlMetadata(stderr.String()))
+	}
+	log.Printf("[curl] stream finished with exit code %d (%d bytes)", result.ExitCode, len(result.Output))
+	return result, nil
+}
+
+type curlStreamWriter struct {
+	runID  string
+	output *strings.Builder
+}
+
+func (w *curlStreamWriter) Write(data []byte) (int, error) {
+	text := string(data)
+	w.output.WriteString(text)
+	w.emit(text)
+	return len(data), nil
+}
+
+func (w *curlStreamWriter) emit(chunk string) {
+	if chunk == "" || application.Get() == nil {
+		return
+	}
+	application.Get().Event.Emit(curlStreamEvent, curlStreamChunk{RunID: w.runID, Chunk: chunk})
+}
+
+func parseCurlMetadata(output string) (status int, durationMs, requestSize, responseSize int64) {
+	const marker = "__CURLDESK_META__"
+	markerIndex := strings.LastIndex(output, marker)
+	if markerIndex == -1 {
+		return 0, 0, 0, 0
+	}
+	metadata := strings.Split(strings.TrimSpace(output[markerIndex+len(marker):]), "|")
+	if len(metadata) != 4 {
+		return 0, 0, 0, 0
+	}
+	fmt.Sscanf(metadata[0], "%d", &status)
+	var seconds float64
+	fmt.Sscanf(metadata[1], "%f", &seconds)
+	durationMs = int64(seconds*1000 + 0.5)
+	fmt.Sscanf(metadata[2], "%d", &requestSize)
+	fmt.Sscanf(metadata[3], "%d", &responseSize)
+	return status, durationMs, requestSize, responseSize
+}
+
+func stripCurlMetadata(output string) string {
+	const marker = "__CURLDESK_META__"
+	if markerIndex := strings.LastIndex(output, marker); markerIndex >= 0 {
+		return strings.TrimSpace(output[:markerIndex])
+	}
+	return output
+}
+
+func (r *CurlRunner) setProcess(cmd *exec.Cmd) {
+	r.mu.Lock()
+	r.process = cmd
+	r.mu.Unlock()
+}
+
+func (r *CurlRunner) clearProcess(cmd *exec.Cmd) {
+	r.mu.Lock()
+	if r.process == cmd {
+		r.process = nil
+	}
+	r.mu.Unlock()
 }
 
 func parseCurlOutput(output string) (body, headers string, status int, durationMs, requestSize, responseSize int64) {

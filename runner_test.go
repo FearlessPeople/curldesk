@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseCurlCommand(t *testing.T) {
 	command := `curl -X POST "https://example.com" \
@@ -38,5 +41,23 @@ func TestParseCurlOutput(t *testing.T) {
 	}
 	if status != 200 || durationMs != 125 || requestSize != 84 || responseSize != 11 {
 		t.Errorf("metadata = %d, %d, %d, %d", status, durationMs, requestSize, responseSize)
+	}
+}
+
+func TestCurlStreamWriterEmitsSmallChunksImmediately(t *testing.T) {
+	var output strings.Builder
+	writer := &curlStreamWriter{runID: "test", output: &output}
+	if _, err := writer.Write([]byte("data: first\n\n")); err != nil {
+		t.Fatalf("Write returned an error: %v", err)
+	}
+	if output.String() != "data: first\n\n" {
+		t.Fatalf("output = %q", output.String())
+	}
+}
+
+func TestParseCurlMetadata(t *testing.T) {
+	status, durationMs, requestSize, responseSize := parseCurlMetadata("__CURLDESK_META__200|0.125|84|11")
+	if status != 200 || durationMs != 125 || requestSize != 84 || responseSize != 11 {
+		t.Fatalf("metadata = %d, %d, %d, %d", status, durationMs, requestSize, responseSize)
 	}
 }
