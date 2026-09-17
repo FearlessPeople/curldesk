@@ -162,4 +162,8 @@ The status-bar version label checks the latest GitHub Release when clicked.
 
 ## License
 
-No license has been declared yet.
+CurlDesk is distributed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+
+This is a source-available, non-commercial license rather than an OSI-approved open-source license. It permits people to inspect, use, modify, and redistribute the project for permitted non-commercial purposes. Commercial use, including commercial use of modified versions, is not permitted under the default license.
+
+For commercial licensing, contact the copyright holder.
