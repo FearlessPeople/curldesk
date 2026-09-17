@@ -1,0 +1,11 @@
+version: '3'
+vars:
+  VITE_PORT: '{{.WAILS_VITE_PORT | default "9245"}}'
+tasks:
+  dev:
+    cmds:
+      - wails3 dev -config ./build/config.yml -port {{.VITE_PORT}}
+  build:
+    cmds:
+      - npm --prefix frontend run build
+      - go build -o build/CurlDesk .

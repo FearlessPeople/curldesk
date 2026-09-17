@@ -1,0 +1,25 @@
+version: '3'
+
+info:
+  companyName: "CurlDesk"
+  productName: "CurlDesk"
+  productIdentifier: "dev.curldesk.app"
+  description: "A local-first curl workbench"
+  copyright: ""
+  comments: ""
+  version: "0.1.0"
+
+dev_mode:
+  root_path: .
+  log_level: info
+  debounce: 500
+  ignore:
+    dir: [.git, node_modules, frontend/dist, build]
+    file: [.DS_Store]
+    watched_extension: ["*.go"]
+    git_ignore: true
+  executes:
+    - cmd: npm --prefix frontend run dev -- --host 127.0.0.1
+      type: background
+    - cmd: go run .
+      type: primary
