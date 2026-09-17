@@ -2,7 +2,7 @@ import { Github, LayoutPanelLeft, LayoutPanelTop, Play, X } from 'lucide-react'
 import { Browser } from '@wailsio/runtime'
 import { Events } from '@wailsio/runtime'
 import { Window } from '@wailsio/runtime'
-import { useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 
 import { AppSidebar } from '@/components/app-sidebar'
 import { Button } from '@/components/button'
@@ -11,12 +11,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/tabs'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/resizable'
 import { WorkspaceService } from '../bindings/curldesk'
 import type { WorkspaceEntry } from '../bindings/curldesk'
-
-const defaultRequests = [
-  { value: 'chat', label: 'chat.curl', command: `curl -N "https://api.example.com/v1/chat/completions" \\
-  -H "Content-Type: application/json"` },
-  { value: 'health', label: 'health.curl', command: 'curl "https://api.example.com/health"' },
-]
 
 type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
 
@@ -38,10 +32,30 @@ function methodColor(method: RequestMethod) {
 
 export default function App() {
   const [layout, setLayout] = useState<'vertical' | 'horizontal'>('vertical')
-  const [requests, setRequests] = useState(defaultRequests)
-  const [activeRequest, setActiveRequest] = useState(defaultRequests[0].value)
+  const [requests, setRequests] = useState<{ value: string; label: string; command: string }[]>([])
+  const [activeRequest, setActiveRequest] = useState('')
   const [saveStatus, setSaveStatus] = useState<Record<string, 'saving' | 'saved'>>({})
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+
+  const syncOpenRequests = async () => {
+    try {
+      const entries = (await WorkspaceService.ListWorkspace()) ?? []
+      const filePaths = new Set(entries.filter((entry) => !entry.isDir).map((entry) => entry.path))
+      setRequests((current) => {
+        const next = current.filter((request) => filePaths.has(request.value))
+        setActiveRequest((active) => filePaths.has(active) ? active : next[0]?.value ?? '')
+        return next
+      })
+    } catch (error) {
+      console.error('Unable to sync open requests', error)
+    }
+  }
+
+  useEffect(() => {
+    void syncOpenRequests()
+    const unsubscribe = Events.On('curldesk:collections-changed', () => { void syncOpenRequests() })
+    return unsubscribe
+  }, [])
 
   const openFile = async (entry: WorkspaceEntry) => {
     try {
@@ -130,6 +144,12 @@ export default function App() {
               </TabsList>
               <Button size="sm" className="ml-auto"><Play /> Run</Button>
             </div>
+
+            {requests.length === 0 && (
+              <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
+                Open a curl file from Collections to start.
+              </div>
+            )}
 
             {requests.map((request) => (
               <TabsContent key={request.value} value={request.value} className="mt-0 flex min-h-0 flex-1 flex-col">
