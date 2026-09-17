@@ -11,6 +11,7 @@ import { OutputEditor } from '@/components/output-editor'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/sidebar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/tabs'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/resizable'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/tooltip'
 import { CurlRunner, WorkspaceService } from '../bindings/curldesk'
 import type { WorkspaceEntry } from '../bindings/curldesk'
 
@@ -286,73 +287,103 @@ export default function App() {
                         <div className="flex min-w-0 shrink-0 items-center gap-3">
                           <div className="text-sm font-medium">Output</div>
                           <div className="flex items-center gap-1">
-                            <Button
-                              variant={outputView === 'response' ? 'secondary' : 'ghost'}
-                              size="sm"
-                              className="h-7 px-2 text-xs"
-                              onClick={() => setOutputView('response')}
-                            >
-                              Response
-                            </Button>
-                            <Button
-                              variant={outputView === 'headers' ? 'secondary' : 'ghost'}
-                              size="sm"
-                              className="h-7 px-2 text-xs"
-                              onClick={() => setOutputView('headers')}
-                            >
-                              Headers
-                            </Button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant={outputView === 'response' ? 'secondary' : 'ghost'}
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => setOutputView('response')}
+                                >
+                                  Response
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">查看响应内容</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant={outputView === 'headers' ? 'secondary' : 'ghost'}
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => setOutputView('headers')}
+                                >
+                                  Headers
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">查看响应头</TooltipContent>
+                            </Tooltip>
                           </div>
                         </div>
-                        <div className="absolute right-4 top-1/2 z-10 flex min-w-0 -translate-y-1/2 items-center gap-2 bg-background pl-2">
+                        <div className="absolute right-6 top-1/2 z-10 flex min-w-0 -translate-y-1/2 items-center gap-2 pl-2">
                           {runInfo && (
-                            <div className="mr-1 hidden items-center gap-2 text-[11px] text-muted-foreground 2xl:flex">
-                              <span className={statusColor(runInfo.status)}>HTTP {runInfo.status || '—'}</span>
-                              <span>{runInfo.durationMs} ms</span>
-                              <span>↑ {formatBytes(runInfo.requestSize)}</span>
-                              <span>↓ {formatBytes(runInfo.responseSize)}</span>
+                            <div className="mr-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-[10px] text-muted-foreground sm:gap-2 sm:text-[11px]">
+                              <span
+                                title="HTTP 状态码"
+                                className={`shrink-0 rounded-sm px-1 py-0.5 font-medium ${statusColor(runInfo.status)}`}
+                              >
+                                HTTP {runInfo.status || '—'}
+                              </span>
+                              <span title="请求耗时" className="shrink-0">{runInfo.durationMs} ms</span>
+                              <span title="请求大小" className="shrink-0">↑ {formatBytes(runInfo.requestSize)}</span>
+                              <span title="响应大小" className="shrink-0">↓ {formatBytes(runInfo.responseSize)}</span>
                             </div>
                           )}
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 shrink-0 rounded-md"
-                            aria-label="复制输出"
-                            onClick={() => void copyOutput()}
-                            disabled={!runOutput}
-                          >
-                            {copiedOutput ? <Check /> : <Copy />}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className={`h-7 w-7 shrink-0 rounded-md ${layout === 'vertical' ? 'bg-muted text-foreground' : ''}`}
-                            aria-label="上下布局"
-                            aria-pressed={layout === 'vertical'}
-                            onClick={() => setLayout('vertical')}
-                          >
-                            <LayoutPanelTop />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className={`h-7 w-7 shrink-0 rounded-md ${layout === 'horizontal' ? 'bg-muted text-foreground' : ''}`}
-                            aria-label="左右布局"
-                            aria-pressed={layout === 'horizontal'}
-                            onClick={() => setLayout('horizontal')}
-                          >
-                            <LayoutPanelLeft />
-                          </Button>
-                          <span className={`shrink-0 text-xs ${runStatus === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}>
-                            {runStatus === 'running' ? 'Running…' : runStatus === 'failed' ? 'Failed' : saveStatus[request.value] === 'saving' ? 'Saving…' : saveStatus[request.value] === 'saved' ? 'Saved' : 'Ready'}
-                          </span>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 shrink-0 rounded-md"
+                                aria-label="复制输出"
+                                onClick={() => void copyOutput()}
+                                disabled={!runOutput}
+                              >
+                                {copiedOutput ? <Check /> : <Copy />}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">复制输出内容</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={`h-7 w-7 shrink-0 rounded-md ${layout === 'vertical' ? 'bg-muted text-foreground' : ''}`}
+                                aria-label="上下布局"
+                                aria-pressed={layout === 'vertical'}
+                                onClick={() => setLayout('vertical')}
+                              >
+                                <LayoutPanelTop />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">上下布局</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={`h-7 w-7 shrink-0 rounded-md ${layout === 'horizontal' ? 'bg-muted text-foreground' : ''}`}
+                                aria-label="左右布局"
+                                aria-pressed={layout === 'horizontal'}
+                                onClick={() => setLayout('horizontal')}
+                              >
+                                <LayoutPanelLeft />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">左右布局</TooltipContent>
+                          </Tooltip>
                         </div>
                       </div>
                       <div className="flex min-h-0 flex-1 overflow-hidden">
                         <OutputEditor
                           key={outputView}
-                          value={outputView === 'response' ? displayOutput : formatOutput(runInfo?.headers || 'No response headers yet.')}
+                          value={outputView === 'response'
+                            ? (runStatus === 'running' && !runOutput ? '' : displayOutput)
+                            : formatOutput(runInfo?.headers || 'No response headers yet.')}
                           mode={outputView}
+                          loading={runStatus === 'running' && outputView === 'response' && !runOutput}
                         />
                       </div>
                     </section>
@@ -367,6 +398,9 @@ export default function App() {
 
       <footer className="flex h-8 shrink-0 items-center gap-4 border-t px-4 text-xs text-muted-foreground">
         <span>Workspace ready</span>
+        <span aria-live="polite" className="border-l pl-4">
+          Auto-save: {saveStatus[activeRequest] === 'saving' ? 'Saving…' : 'On'}
+        </span>
         <a
           href="https://github.com/FearlessPeople/curldesk"
           onClick={(event) => {
