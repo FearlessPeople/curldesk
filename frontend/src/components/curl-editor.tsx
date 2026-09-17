@@ -7,6 +7,7 @@ import { EditorView, GutterMarker, gutter } from '@codemirror/view'
 
 type CurlEditorProps = {
   value: string
+  fontSize?: number
   onChange: (value: string) => void
   onRun: (value: string, lineNumber: number) => void
   onStop: () => void
@@ -85,7 +86,7 @@ function requestStartLines(
   return builder.finish()
 }
 
-export function CurlEditor({ value, onChange, onRun, onStop, runningLine }: CurlEditorProps) {
+export function CurlEditor({ value, fontSize = 14, onChange, onRun, onStop, runningLine }: CurlEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const onChangeRef = useRef(onChange)
@@ -120,7 +121,7 @@ export function CurlEditor({ value, onChange, onRun, onStop, runningLine }: Curl
           if (update.docChanged) onChangeRef.current(update.state.doc.toString())
         }),
         EditorView.theme({
-          '&': { height: '100%', width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden', fontSize: '0.875rem' },
+          '&': { height: '100%', width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden', fontSize: `${fontSize}px`, color: 'hsl(var(--foreground))', backgroundColor: 'transparent' },
           '.cm-scroller': {
             width: 0,
             flex: '1 1 0',
@@ -137,10 +138,11 @@ export function CurlEditor({ value, onChange, onRun, onStop, runningLine }: Curl
           '.cm-scroller:hover::-webkit-scrollbar-thumb': { backgroundColor: 'hsl(215 16% 75%)' },
           '.cm-scroller:hover': { scrollbarColor: 'hsl(215 16% 75%) transparent' },
           '.cm-content': { boxSizing: 'border-box', padding: '1rem 1rem 1rem 0' },
-          '.cm-gutters': { border: 'none', backgroundColor: 'transparent' },
+          '.cm-gutters': { border: 'none', backgroundColor: 'transparent', color: 'hsl(var(--muted-foreground))' },
           '.cm-line': { display: 'block', boxSizing: 'border-box' },
-          '.cm-activeLine': { backgroundColor: 'hsl(221 83% 53% / 0.08)' },
-          '.cm-activeLineGutter': { backgroundColor: 'hsl(221 83% 53% / 0.08)' },
+          '.cm-activeLine': { backgroundColor: 'hsl(var(--active-line) / 0.08)' },
+          '.cm-activeLineGutter': { backgroundColor: 'hsl(var(--active-line) / 0.08)' },
+          '.cm-selectionBackground': { backgroundColor: 'hsl(var(--selection) / 0.24) !important' },
           '.cm-lineNumbers .cm-gutterElement': { minWidth: '2rem', padding: '0 0.5rem 0 0' },
         }),
       ],
@@ -148,7 +150,7 @@ export function CurlEditor({ value, onChange, onRun, onStop, runningLine }: Curl
     const view = new EditorView({ state, parent: editorRef.current })
     viewRef.current = view
     return () => view.destroy()
-  }, [])
+  }, [fontSize])
 
   useEffect(() => {
     const view = viewRef.current
@@ -167,5 +169,5 @@ export function CurlEditor({ value, onChange, onRun, onStop, runningLine }: Curl
     })
   }, [runningLine])
 
-  return <div ref={editorRef} className="h-full min-h-0 min-w-0 flex-1 overflow-hidden" />
+  return <div ref={editorRef} className="cm-request-editor h-full min-h-0 min-w-0 flex-1 overflow-hidden" />
 }

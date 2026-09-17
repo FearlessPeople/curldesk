@@ -11,6 +11,8 @@
   --input: 214 20% 82%;
   --ring: 221 83% 53%;
   --primary: 221 83% 53%;
+  --selection: 221 83% 53%;
+  --active-line: 221 83% 53%;
   --primary-foreground: 0 0% 100%;
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
@@ -25,6 +27,27 @@
   --sidebar-accent-foreground: 222.2 47.4% 11.2%;
   --sidebar-border: 214.3 31.8% 91.4%;
   --sidebar-ring: 215 20.2% 65.1%;
+}
+
+.dark {
+  --background: 222 31% 10%;
+  --foreground: 210 20% 96%;
+  --muted: 217 25% 17%;
+  --muted-foreground: 215 16% 65%;
+  --border: 217 20% 25%;
+  --input: 217 20% 30%;
+  --ring: 221 83% 65%;
+  --selection: 221 83% 65%;
+  --active-line: 221 83% 65%;
+  --primary-foreground: 222 31% 10%;
+  --sidebar-background: 222 31% 12%;
+  --sidebar-foreground: 210 20% 96%;
+  --sidebar-primary: 210 20% 96%;
+  --sidebar-primary-foreground: 222 31% 10%;
+  --sidebar-accent: 217 25% 17%;
+  --sidebar-accent-foreground: 210 20% 96%;
+  --sidebar-border: 217 20% 25%;
+  --sidebar-ring: 221 83% 65%;
 }
 
 * { border-color: hsl(var(--border)); }
@@ -47,6 +70,17 @@ body { min-width: 960px; }
 .resizable-group[data-panel-group-direction="horizontal"] .resizable-handle > div { width: 0.75rem; height: 2rem; }
 
 .cm-editor { height: 100%; width: 100%; background: transparent; }
+.cm-request-editor .cm-editor.cm-focused .cm-cursor {
+  border-left: 2px solid hsl(var(--primary));
+  animation: cm-cursor-blink 1s step-end infinite;
+}
+@keyframes cm-cursor-blink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cm-request-editor .cm-editor.cm-focused .cm-cursor { animation: none; }
+}
 .cm-editor .cm-scroller { width: 100%; overflow-x: hidden; overflow-y: auto; }
 .cm-editor .cm-gutters { padding-left: 0.25rem; }
 .cm-run-gutter { min-width: 2rem; }

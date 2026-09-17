@@ -209,7 +209,7 @@ export function AppSidebar({ onOpenFile }: AppSidebarProps) {
                     </SidebarMenuAction>
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
-                <TooltipContent side="right">文件夹操作</TooltipContent>
+                <TooltipContent side="right">Folder actions</TooltipContent>
               </Tooltip>
               <DropdownMenuContent side="right" align="start" className="w-48">
                 <DropdownMenuItem onSelect={() => beginCreate('file', folder.path)}><FilePlus2 /> New curl file</DropdownMenuItem>
@@ -253,7 +253,7 @@ export function AppSidebar({ onOpenFile }: AppSidebarProps) {
               </SidebarMenuAction>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent side="right">文件操作</TooltipContent>
+          <TooltipContent side="right">File actions</TooltipContent>
         </Tooltip>
         <DropdownMenuContent side="right" align="start" className="w-40">
           <DropdownMenuItem onSelect={() => beginRename(file)}><Pencil /> Rename</DropdownMenuItem>
@@ -268,7 +268,7 @@ export function AppSidebar({ onOpenFile }: AppSidebarProps) {
     <Sidebar collapsible="icon" className="!absolute !inset-y-0 !h-full">
       <SidebarContent>
         <SidebarGroup>
-          <div className="-mx-2 -mt-2 h-12 border-b px-2">
+          <div className="-mx-2 -mt-2 h-10 border-b px-2">
             <div className="flex h-full items-center justify-between">
             <SidebarGroupLabel>Collections</SidebarGroupLabel>
             <div className="-mr-1.5 flex items-center gap-0.5">
@@ -276,13 +276,13 @@ export function AppSidebar({ onOpenFile }: AppSidebarProps) {
                 <TooltipTrigger asChild>
                   <Button className="size-8 rounded-sm [&>svg]:size-3.5" variant="ghost" size="icon" aria-label="New curl file" onClick={() => beginCreate('file')}><FilePlus2 /></Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">新建 curl 文件</TooltipContent>
+                <TooltipContent side="bottom">New curl file</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button className="size-8 rounded-sm [&>svg]:size-3.5" variant="ghost" size="icon" aria-label="New folder" onClick={() => beginCreate('folder')}><FolderPlus /></Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">新建文件夹</TooltipContent>
+                <TooltipContent side="bottom">New folder</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -296,7 +296,7 @@ export function AppSidebar({ onOpenFile }: AppSidebarProps) {
                     {allFoldersExpanded ? <ChevronsUpDown /> : <ChevronsDownUp />}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="bottom">{allFoldersExpanded ? '折叠所有文件夹' : '展开所有文件夹'}</TooltipContent>
+                <TooltipContent side="bottom">{allFoldersExpanded ? 'Collapse all folders' : 'Expand all folders'}</TooltipContent>
               </Tooltip>
               <DropdownMenu>
                 <Tooltip>
@@ -305,7 +305,7 @@ export function AppSidebar({ onOpenFile }: AppSidebarProps) {
                       <Button className="size-8 rounded-sm [&>svg]:size-3.5" variant="ghost" size="icon" aria-label="Collection actions"><MoreHorizontal /></Button>
                     </DropdownMenuTrigger>
                   </TooltipTrigger>
-                  <TooltipContent side="bottom">集合操作</TooltipContent>
+                  <TooltipContent side="bottom">Collection actions</TooltipContent>
                 </Tooltip>
                 <DropdownMenuContent side="right" align="start" className="w-48">
                   <DropdownMenuItem onSelect={() => importInputRef.current?.click()}><Upload /> Import curl files</DropdownMenuItem>

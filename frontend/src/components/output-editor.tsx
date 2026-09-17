@@ -1,17 +1,29 @@
 import { useEffect, useRef } from 'react'
 import { json } from '@codemirror/lang-json'
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { EditorState } from '@codemirror/state'
 import { basicSetup } from 'codemirror'
 import { EditorView } from '@codemirror/view'
 import { LoaderCircle } from 'lucide-react'
+import { tags } from '@lezer/highlight'
+
+const outputHighlighting = syntaxHighlighting(HighlightStyle.define([
+  { tag: tags.propertyName, color: 'hsl(262 70% 55%)' },
+  { tag: tags.string, color: 'hsl(158 64% 36%)' },
+  { tag: tags.number, color: 'hsl(200 70% 42%)' },
+  { tag: tags.bool, color: 'hsl(221 83% 53%)' },
+  { tag: tags.null, color: 'hsl(32 80% 42%)' },
+]))
 
 type OutputEditorProps = {
   value: string
   mode?: 'response' | 'headers'
+  fontSize?: number
+  wrap?: boolean
   loading?: boolean
 }
 
-export function OutputEditor({ value, mode = 'response', loading = false }: OutputEditorProps) {
+export function OutputEditor({ value, mode = 'response', fontSize = 14, wrap = true, loading = false }: OutputEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
 
@@ -21,11 +33,11 @@ export function OutputEditor({ value, mode = 'response', loading = false }: Outp
       doc: value,
       extensions: [
         basicSetup,
-        ...(mode === 'response' ? [json()] : []),
+        ...(mode === 'response' ? [json(), outputHighlighting] : []),
         EditorState.readOnly.of(true),
         EditorView.editable.of(false),
         EditorView.theme({
-          '&': { height: '100%', width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden', fontSize: '0.875rem', backgroundColor: 'transparent' },
+          '&': { height: '100%', width: '100%', minWidth: 0, maxWidth: '100%', overflow: 'hidden', fontSize: `${fontSize}px`, color: 'hsl(var(--foreground))', backgroundColor: 'transparent' },
           '.cm-scroller': {
             width: '100%',
             flex: '1 1 0',
@@ -47,21 +59,26 @@ export function OutputEditor({ value, mode = 'response', loading = false }: Outp
             boxSizing: 'border-box',
             minWidth: 0,
             maxWidth: '100%',
-            padding: '1rem',
-            whiteSpace: 'pre-wrap',
-            overflowWrap: 'anywhere',
-            wordBreak: 'break-word',
+            padding: '1rem 1rem 1rem 0',
+            whiteSpace: wrap ? 'pre-wrap' : 'pre',
+            overflowWrap: wrap ? 'anywhere' : 'normal',
+            wordBreak: wrap ? 'break-word' : 'normal',
           },
           '.cm-line': {
+            display: 'block',
+            boxSizing: 'border-box',
             minWidth: 0,
             maxWidth: '100%',
-            overflowWrap: 'anywhere',
-            wordBreak: 'break-word',
+            overflowWrap: wrap ? 'anywhere' : 'normal',
+            wordBreak: wrap ? 'break-word' : 'normal',
           },
-          '.cm-gutters': { border: 'none', backgroundColor: 'transparent' },
+          '.cm-gutters': { border: 'none', backgroundColor: 'transparent', color: 'hsl(var(--muted-foreground))' },
           '.cm-foldGutter .cm-gutterElement': { minWidth: '1rem', padding: '0', color: 'hsl(215 12% 55%)', cursor: 'pointer' },
           '.cm-foldGutter .cm-gutterElement:hover': { color: 'hsl(221 83% 53%)' },
           '.cm-lineNumbers .cm-gutterElement': { minWidth: '2rem', padding: '0 0.5rem 0 0' },
+          '.cm-activeLine': { backgroundColor: 'hsl(var(--active-line) / 0.08)' },
+          '.cm-activeLineGutter': { backgroundColor: 'hsl(var(--active-line) / 0.08)' },
+          '.cm-selectionBackground': { backgroundColor: 'hsl(var(--selection) / 0.24) !important' },
         }),
       ],
     })
@@ -71,7 +88,7 @@ export function OutputEditor({ value, mode = 'response', loading = false }: Outp
       view.destroy()
       viewRef.current = null
     }
-  }, [])
+  }, [fontSize, mode, wrap])
 
   useEffect(() => {
     const view = viewRef.current
