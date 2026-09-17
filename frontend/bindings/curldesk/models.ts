@@ -12,4 +12,9 @@ export interface WorkspaceEntry {
 export interface RunResult {
     "output": string;
     "exitCode": number;
+    "status": number;
+    "durationMs": number;
+    "requestSize": number;
+    "responseSize": number;
+    "responseHeaders": string;
 }

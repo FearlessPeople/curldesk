@@ -1,4 +1,4 @@
-import { Github, LayoutPanelLeft, LayoutPanelTop, Play, X } from 'lucide-react'
+import { Check, Copy, Github, LayoutPanelLeft, LayoutPanelTop, X } from 'lucide-react'
 import { Browser } from '@wailsio/runtime'
 import { Events } from '@wailsio/runtime'
 import { Window } from '@wailsio/runtime'
@@ -6,6 +6,8 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 
 import { AppSidebar } from '@/components/app-sidebar'
 import { Button } from '@/components/button'
+import { CurlEditor } from '@/components/curl-editor'
+import { OutputEditor } from '@/components/output-editor'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/sidebar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/tabs'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/resizable'
@@ -30,6 +32,36 @@ function methodColor(method: RequestMethod) {
   return 'text-purple-600 dark:text-purple-400'
 }
 
+function extractRequestBlock(command: string, startLine: number) {
+  const lines = command.split('\n')
+  const startIndex = Math.max(0, startLine - 1)
+  const endIndex = lines.findIndex((line, index) => index > startIndex && /^\s*curl\b/i.test(line))
+  return lines.slice(startIndex, endIndex === -1 ? lines.length : endIndex).join('\n').trim()
+}
+
+function formatOutput(output: string) {
+  if (!output) return ''
+  try {
+    return JSON.stringify(JSON.parse(output), null, 2)
+  } catch {
+    return output
+  }
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function statusColor(status: number) {
+  if (status >= 200 && status < 300) return 'text-emerald-600 dark:text-emerald-400'
+  if (status >= 300 && status < 400) return 'text-sky-600 dark:text-sky-400'
+  if (status >= 400 && status < 500) return 'text-amber-600 dark:text-amber-400'
+  if (status >= 500) return 'text-red-600 dark:text-red-400'
+  return 'text-muted-foreground'
+}
+
 export default function App() {
   const [layout, setLayout] = useState<'vertical' | 'horizontal'>('vertical')
   const [requests, setRequests] = useState<{ value: string; label: string; command: string }[]>([])
@@ -37,7 +69,26 @@ export default function App() {
   const [saveStatus, setSaveStatus] = useState<Record<string, 'saving' | 'saved'>>({})
   const [runOutput, setRunOutput] = useState('')
   const [runStatus, setRunStatus] = useState<'ready' | 'running' | 'failed'>('ready')
+  const [runningLine, setRunningLine] = useState<number | null>(null)
+  const [copiedOutput, setCopiedOutput] = useState(false)
+  const [outputView, setOutputView] = useState<'response' | 'headers'>('response')
+  const [runInfo, setRunInfo] = useState<{ status: number; durationMs: number; requestSize: number; responseSize: number; headers: string } | null>(null)
+  const runId = useRef(0)
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const displayOutput = formatOutput(runOutput || 'Run a curl command to see output here.')
+
+  const copyOutput = async () => {
+    if (!runOutput) return
+    try {
+      await navigator.clipboard.writeText(displayOutput)
+      setCopiedOutput(true)
+      if (copiedTimer.current) clearTimeout(copiedTimer.current)
+      copiedTimer.current = window.setTimeout(() => setCopiedOutput(false), 1400)
+    } catch (error) {
+      console.error('Unable to copy output', error)
+    }
+  }
 
   const syncOpenRequests = async () => {
     try {
@@ -57,6 +108,11 @@ export default function App() {
     void syncOpenRequests()
     const unsubscribe = Events.On('curldesk:collections-changed', () => { void syncOpenRequests() })
     return unsubscribe
+  }, [])
+
+  useEffect(() => () => {
+    Object.values(saveTimers.current).forEach((timer) => clearTimeout(timer))
+    if (copiedTimer.current) clearTimeout(copiedTimer.current)
   }, [])
 
   const openFile = async (entry: WorkspaceEntry) => {
@@ -97,19 +153,49 @@ export default function App() {
     }, 600)
   }
 
-  const runCurrentRequest = async () => {
-    const request = requests.find((item) => item.value === activeRequest)
-    if (!request || runStatus === 'running') return
+  const runRequestBlock = async (command: string, startLine: number) => {
+    if (!activeRequest || runStatus === 'running') return
+    const requestBlock = extractRequestBlock(command, startLine)
+    if (!requestBlock) return
+    const currentRunId = ++runId.current
     setRunOutput('')
+    setRunInfo(null)
+    setOutputView('response')
     setRunStatus('running')
+    setRunningLine(startLine)
     try {
-      const result = await CurlRunner.RunCurl(request.command)
+      const result = await CurlRunner.RunCurl(requestBlock)
+      if (runId.current !== currentRunId) return
       setRunOutput(result.output || `Process exited with code ${result.exitCode}.`)
+      setRunInfo({
+        status: result.status,
+        durationMs: result.durationMs,
+        requestSize: result.requestSize,
+        responseSize: result.responseSize,
+        headers: result.responseHeaders,
+      })
       setRunStatus(result.exitCode === 0 ? 'ready' : 'failed')
+      setRunningLine(null)
     } catch (error) {
+      if (runId.current !== currentRunId) return
       console.error('Unable to run curl command', error)
       setRunOutput(error instanceof Error ? error.message : 'Unable to run curl command.')
       setRunStatus('failed')
+      setRunningLine(null)
+    }
+  }
+
+  const stopRequest = async () => {
+    if (runStatus !== 'running') return
+    runId.current += 1
+    setRunningLine(null)
+    setRunStatus('ready')
+    setRunOutput('Request stopped.')
+    setRunInfo(null)
+    try {
+      await CurlRunner.StopCurl()
+    } catch (error) {
+      console.error('Unable to stop curl command', error)
     }
   }
 
@@ -131,9 +217,9 @@ export default function App() {
           <AppSidebar onOpenFile={openFile} />
           <SidebarInset>
             <Tabs value={activeRequest} onValueChange={setActiveRequest} className="flex min-h-0 flex-1 flex-col">
-            <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
+            <div className="relative flex h-12 shrink-0 items-center gap-2 border-b px-3">
               <SidebarTrigger />
-              <TabsList className="gap-1 bg-transparent p-0">
+              <TabsList className="min-w-0 flex-1 justify-start gap-1 overflow-x-auto bg-transparent p-0 pr-24">
                 {requests.map((request) => {
                   const method = detectMethod(request.command)
                   return (
@@ -160,9 +246,6 @@ export default function App() {
                   )
                 })}
               </TabsList>
-              <Button size="sm" className="ml-auto" onClick={() => void runCurrentRequest()} disabled={!activeRequest || runStatus === 'running'}>
-                <Play /> {runStatus === 'running' ? 'Running…' : 'Run'}
-              </Button>
             </div>
 
             {requests.length === 0 && (
@@ -176,21 +259,63 @@ export default function App() {
                 <ResizablePanelGroup orientation={layout} className="min-h-0 flex-1">
                   <ResizablePanel defaultSize="68%" minSize="24%" className="resizable-panel">
                     <section className="flex h-full min-h-0 flex-1 overflow-hidden">
-                      <div className="w-10 shrink-0 select-none border-r px-1 py-4 text-right font-mono text-xs leading-6 text-muted-foreground">
-                        {request.command.split('\n').map((_, index) => <div key={index}>{index + 1}</div>)}
-                      </div>
-                      <textarea aria-label={`${request.label} command editor`} className="min-h-full min-w-0 flex-1 resize-none bg-transparent p-4 font-mono text-sm leading-6 outline-none" value={request.command} onChange={(event) => updateCommand(request.value, event.target.value)} spellCheck={false} />
+                      <CurlEditor
+                        value={request.command}
+                        onChange={(command) => updateCommand(request.value, command)}
+                        onRun={(command, lineNumber) => void runRequestBlock(command, lineNumber)}
+                        onStop={() => void stopRequest()}
+                        runningLine={request.value === activeRequest ? runningLine : null}
+                      />
                     </section>
                   </ResizablePanel>
                   <ResizableHandle withHandle />
                   <ResizablePanel defaultSize="32%" minSize="18%" className="resizable-panel">
                     <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
-                      <div className="flex h-10 shrink-0 items-center justify-between border-b px-4">
-                        <div className="text-sm font-medium">Output</div>
+                      <div className="flex h-10 shrink-0 items-center justify-between border-t px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="text-sm font-medium">Output</div>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              variant={outputView === 'response' ? 'secondary' : 'ghost'}
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => setOutputView('response')}
+                            >
+                              Response
+                            </Button>
+                            <Button
+                              variant={outputView === 'headers' ? 'secondary' : 'ghost'}
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => setOutputView('headers')}
+                            >
+                              Headers
+                            </Button>
+                          </div>
+                        </div>
                         <div className="flex items-center gap-2">
+                          {runInfo && (
+                            <div className="mr-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+                              <span className={statusColor(runInfo.status)}>HTTP {runInfo.status || '—'}</span>
+                              <span>{runInfo.durationMs} ms</span>
+                              <span>↑ {formatBytes(runInfo.requestSize)}</span>
+                              <span>↓ {formatBytes(runInfo.responseSize)}</span>
+                            </div>
+                          )}
                           <Button
-                            variant={layout === 'vertical' ? 'secondary' : 'ghost'}
+                            variant="ghost"
                             size="icon"
+                            className="h-7 w-7 rounded-md"
+                            aria-label="复制输出"
+                            onClick={() => void copyOutput()}
+                            disabled={!runOutput}
+                          >
+                            {copiedOutput ? <Check /> : <Copy />}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 rounded-md ${layout === 'vertical' ? 'bg-muted text-foreground' : ''}`}
                             aria-label="上下布局"
                             aria-pressed={layout === 'vertical'}
                             onClick={() => setLayout('vertical')}
@@ -198,8 +323,9 @@ export default function App() {
                             <LayoutPanelTop />
                           </Button>
                           <Button
-                            variant={layout === 'horizontal' ? 'secondary' : 'ghost'}
+                            variant="ghost"
                             size="icon"
+                            className={`h-7 w-7 rounded-md ${layout === 'horizontal' ? 'bg-muted text-foreground' : ''}`}
                             aria-label="左右布局"
                             aria-pressed={layout === 'horizontal'}
                             onClick={() => setLayout('horizontal')}
@@ -212,10 +338,11 @@ export default function App() {
                         </div>
                       </div>
                       <div className="flex min-h-0 flex-1 overflow-hidden">
-                        <div className="w-10 shrink-0 select-none border-r px-1 py-4 text-right font-mono text-xs leading-6 text-muted-foreground">
-                          <div>1</div>
-                        </div>
-                        <pre className="min-h-0 flex-1 overflow-auto p-4 font-mono text-sm text-muted-foreground">{runOutput || 'Run a curl command to see output here.'}</pre>
+                        <OutputEditor
+                          key={outputView}
+                          value={outputView === 'response' ? displayOutput : formatOutput(runInfo?.headers || 'No response headers yet.')}
+                          mode={outputView}
+                        />
                       </div>
                     </section>
                   </ResizablePanel>

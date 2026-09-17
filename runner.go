@@ -3,35 +3,132 @@ package main
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 type RunResult struct {
-	Output   string `json:"output"`
-	ExitCode int    `json:"exitCode"`
+	Output          string `json:"output"`
+	ExitCode        int    `json:"exitCode"`
+	Status          int    `json:"status"`
+	DurationMs      int64  `json:"durationMs"`
+	RequestSize     int64  `json:"requestSize"`
+	ResponseSize    int64  `json:"responseSize"`
+	ResponseHeaders string `json:"responseHeaders"`
 }
 
-type CurlRunner struct{}
+type CurlRunner struct {
+	mu      sync.Mutex
+	process *exec.Cmd
+}
 
 func (r *CurlRunner) RunCurl(command string) (RunResult, error) {
+	log.Printf("[curl] starting request (%d bytes)", len(command))
 	args, err := parseCurlCommand(command)
 	if err != nil {
+		log.Printf("[curl] rejected request: %v", err)
 		return RunResult{}, err
 	}
+	// The progress meter is written to stderr and is noisy when rendered in
+	// the Output panel. Keep curl errors visible while hiding that meter.
+	args = append(args,
+		"--silent", "--show-error",
+		"--dump-header", "-",
+		"--write-out", "\n__CURLDESK_META__%{http_code}|%{time_total}|%{size_request}|%{size_download}",
+	)
 
 	executable := "curl"
 	if runtime.GOOS == "windows" {
 		executable = "curl.exe"
 	}
 	cmd := exec.Command(executable, args...)
-	output, err := cmd.CombinedOutput()
+	r.mu.Lock()
+	r.process = cmd
+	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		if r.process == cmd {
+			r.process = nil
+		}
+		r.mu.Unlock()
+	}()
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err = cmd.Run()
 	if cmd.ProcessState == nil {
+		log.Printf("[curl] failed to start: %v", err)
 		return RunResult{}, fmt.Errorf("curl executable not found: %w", err)
 	}
-	result := RunResult{Output: string(output), ExitCode: cmd.ProcessState.ExitCode()}
+	result := RunResult{ExitCode: cmd.ProcessState.ExitCode()}
+	result.Output, result.ResponseHeaders, result.Status, result.DurationMs, result.RequestSize, result.ResponseSize = parseCurlOutput(stdout.String())
+	if result.ExitCode != 0 && stderr.Len() > 0 {
+		result.Output = strings.TrimSpace(result.Output + "\n" + stderr.String())
+	}
+	log.Printf("[curl] finished with exit code %d (%d bytes)", result.ExitCode, len(result.Output))
 	return result, nil
+}
+
+func parseCurlOutput(output string) (body, headers string, status int, durationMs, requestSize, responseSize int64) {
+	const marker = "__CURLDESK_META__"
+	markerIndex := strings.LastIndex(output, marker)
+	if markerIndex == -1 {
+		return output, "", 0, 0, 0, 0
+	}
+
+	payload := strings.TrimSuffix(output[:markerIndex], "\n")
+	metadata := strings.Split(strings.TrimSpace(output[markerIndex+len(marker):]), "|")
+	if len(metadata) == 4 {
+		fmt.Sscanf(metadata[0], "%d", &status)
+		var seconds float64
+		fmt.Sscanf(metadata[1], "%f", &seconds)
+		durationMs = int64(seconds*1000 + 0.5)
+		fmt.Sscanf(metadata[2], "%d", &requestSize)
+		fmt.Sscanf(metadata[3], "%d", &responseSize)
+	}
+
+	headers, body = splitResponseHeaders(payload)
+	return body, headers, status, durationMs, requestSize, responseSize
+}
+
+func splitResponseHeaders(output string) (headers, body string) {
+	remaining := output
+	var blocks []string
+	for strings.HasPrefix(remaining, "HTTP/") {
+		separator := strings.Index(remaining, "\r\n\r\n")
+		separatorSize := 4
+		if separator == -1 {
+			separator = strings.Index(remaining, "\n\n")
+			separatorSize = 2
+		}
+		if separator == -1 {
+			return "", output
+		}
+		block := remaining[:separator]
+		blocks = append(blocks, block)
+		remaining = remaining[separator+separatorSize:]
+		if !strings.HasPrefix(remaining, "HTTP/") {
+			break
+		}
+	}
+	if len(blocks) == 0 {
+		return "", output
+	}
+	return strings.Join(blocks, "\n\n"), remaining
+}
+
+func (r *CurlRunner) StopCurl() error {
+	r.mu.Lock()
+	process := r.process
+	r.mu.Unlock()
+	if process == nil || process.Process == nil {
+		return nil
+	}
+	log.Printf("[curl] stopping request")
+	return process.Process.Kill()
 }
 
 func parseCurlCommand(command string) ([]string, error) {

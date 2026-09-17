@@ -6,3 +6,7 @@ import type * as $models from "./models.js";
 export function RunCurl(command: string): $CancellablePromise<$models.RunResult> {
     return $Call.ByName("main.CurlRunner.RunCurl", command);
 }
+
+export function StopCurl(): $CancellablePromise<void> {
+    return $Call.ByName("main.CurlRunner.StopCurl");
+}
