@@ -1,7 +1,8 @@
-import { Github, LayoutPanelLeft, LayoutPanelTop, Play, Terminal } from 'lucide-react'
+import { Github, LayoutPanelLeft, LayoutPanelTop, Play, X } from 'lucide-react'
 import { Browser } from '@wailsio/runtime'
+import { Events } from '@wailsio/runtime'
 import { Window } from '@wailsio/runtime'
-import { useState, type CSSProperties } from 'react'
+import { useRef, useState, type CSSProperties } from 'react'
 
 import { AppSidebar } from '@/components/app-sidebar'
 import { Button } from '@/components/button'
@@ -17,10 +18,30 @@ const defaultRequests = [
   { value: 'health', label: 'health.curl', command: 'curl "https://api.example.com/health"' },
 ]
 
+type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
+
+function detectMethod(command: string): RequestMethod {
+  const explicitMethod = command.match(/(?:^|\s)(?:-X|--request)\s+["']?([A-Za-z]+)["']?/i)?.[1].toUpperCase()
+  if (explicitMethod && ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].includes(explicitMethod)) {
+    return explicitMethod as RequestMethod
+  }
+  if (/(?:^|\s)(?:-d|--data(?:-raw|-binary)?|--form)\b/i.test(command)) return 'POST'
+  return 'GET'
+}
+
+function methodColor(method: RequestMethod) {
+  if (method === 'GET') return 'text-emerald-600 dark:text-emerald-400'
+  if (method === 'DELETE') return 'text-red-600 dark:text-red-400'
+  if (method === 'PUT' || method === 'PATCH') return 'text-amber-600 dark:text-amber-400'
+  return 'text-purple-600 dark:text-purple-400'
+}
+
 export default function App() {
   const [layout, setLayout] = useState<'vertical' | 'horizontal'>('vertical')
   const [requests, setRequests] = useState(defaultRequests)
   const [activeRequest, setActiveRequest] = useState(defaultRequests[0].value)
+  const [saveStatus, setSaveStatus] = useState<Record<string, 'saving' | 'saved'>>({})
+  const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const openFile = async (entry: WorkspaceEntry) => {
     try {
@@ -32,6 +53,32 @@ export default function App() {
     } catch (error) {
       console.error('Unable to open curl file', error)
     }
+  }
+
+  const closeRequest = (value: string) => {
+    if (requests.length === 1) return
+    const index = requests.findIndex((request) => request.value === value)
+    const nextRequests = requests.filter((request) => request.value !== value)
+    setRequests(nextRequests)
+    if (activeRequest === value) {
+      setActiveRequest(nextRequests[Math.max(0, index - 1)]?.value ?? nextRequests[0].value)
+    }
+  }
+
+  const updateCommand = (value: string, command: string) => {
+    setRequests((current) => current.map((request) => request.value === value ? { ...request, command } : request))
+    if (!/\.curl$/i.test(value)) return
+    setSaveStatus((current) => ({ ...current, [value]: 'saving' }))
+    clearTimeout(saveTimers.current[value])
+    saveTimers.current[value] = setTimeout(async () => {
+      try {
+        await WorkspaceService.SaveFile(value, command)
+        await Events.Emit('curldesk:collections-changed')
+        setSaveStatus((current) => ({ ...current, [value]: 'saved' }))
+      } catch (error) {
+        console.error('Unable to save curl file', error)
+      }
+    }, 600)
   }
 
   return (
@@ -54,8 +101,32 @@ export default function App() {
             <Tabs value={activeRequest} onValueChange={setActiveRequest} className="flex min-h-0 flex-1 flex-col">
             <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
               <SidebarTrigger />
-              <TabsList>
-                {requests.map((request) => <TabsTrigger key={request.value} value={request.value}>{request.label}</TabsTrigger>)}
+              <TabsList className="gap-1 bg-transparent p-0">
+                {requests.map((request) => {
+                  const method = detectMethod(request.command)
+                  return (
+                    <TabsTrigger key={request.value} value={request.value} className="group gap-1.5 px-2.5">
+                      <span className={`font-mono text-[11px] font-semibold ${methodColor(method)}`}>{method}</span>
+                      <span>{request.label.replace(/\.curl$/i, '')}</span>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Close ${request.label}`}
+                        className="ml-1 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-slate-200 group-hover:opacity-100 group-data-[state=active]:opacity-70 dark:hover:bg-slate-800"
+                        onClick={(event) => { event.stopPropagation(); closeRequest(request.value) }}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            closeRequest(request.value)
+                          }
+                        }}
+                      >
+                        <X className="size-3" />
+                      </span>
+                    </TabsTrigger>
+                  )
+                })}
               </TabsList>
               <Button size="sm" className="ml-auto"><Play /> Run</Button>
             </div>
@@ -68,7 +139,7 @@ export default function App() {
                       <div className="w-12 shrink-0 select-none border-r px-2 py-4 text-right font-mono text-xs leading-6 text-muted-foreground">
                         {request.command.split('\n').map((_, index) => <div key={index}>{String(index + 1).padStart(2, '0')}</div>)}
                       </div>
-                      <textarea aria-label={`${request.label} command editor`} className="min-h-full min-w-0 flex-1 resize-none bg-transparent p-4 font-mono text-sm leading-6 outline-none" defaultValue={request.command} spellCheck={false} />
+                      <textarea aria-label={`${request.label} command editor`} className="min-h-full min-w-0 flex-1 resize-none bg-transparent p-4 font-mono text-sm leading-6 outline-none" value={request.command} onChange={(event) => updateCommand(request.value, event.target.value)} spellCheck={false} />
                     </section>
                   </ResizablePanel>
                   <ResizableHandle withHandle />
@@ -95,7 +166,7 @@ export default function App() {
                           >
                             <LayoutPanelLeft />
                           </Button>
-                          <span className="text-xs text-muted-foreground">Ready</span>
+                          <span className="text-xs text-muted-foreground">{saveStatus[request.value] === 'saving' ? 'Saving…' : saveStatus[request.value] === 'saved' ? 'Saved' : 'Ready'}</span>
                         </div>
                       </div>
                       <pre className="min-h-0 flex-1 overflow-auto p-4 font-mono text-sm text-muted-foreground">Run a curl command to see output here.</pre>
