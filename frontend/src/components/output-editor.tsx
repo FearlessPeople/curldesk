@@ -39,7 +39,7 @@ export function OutputEditor({ value, mode = 'response' }: OutputEditorProps) {
           '.cm-scroller::-webkit-scrollbar-thumb': { backgroundColor: 'transparent', borderRadius: '999px' },
           '.cm-scroller:hover::-webkit-scrollbar-thumb': { backgroundColor: 'hsl(215 16% 75%)' },
           '.cm-scroller:hover': { scrollbarColor: 'hsl(215 16% 75%) transparent' },
-          '.cm-content': { minWidth: '100%', boxSizing: 'border-box', padding: '1rem' },
+          '.cm-content': { boxSizing: 'border-box', padding: '1rem' },
           '.cm-gutters': { border: 'none', backgroundColor: 'transparent' },
           '.cm-foldGutter .cm-gutterElement': { minWidth: '1rem', padding: '0', color: 'hsl(215 12% 55%)', cursor: 'pointer' },
           '.cm-foldGutter .cm-gutterElement:hover': { color: 'hsl(221 83% 53%)' },
