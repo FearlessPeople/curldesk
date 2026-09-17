@@ -1,4 +1,4 @@
-import { Github, LayoutPanelLeft, LayoutPanelTop, PanelBottom, Play, Terminal } from 'lucide-react'
+import { Github, LayoutPanelLeft, LayoutPanelTop, Play, Terminal } from 'lucide-react'
 import { Browser } from '@wailsio/runtime'
 import { Window } from '@wailsio/runtime'
 import { useState, type CSSProperties } from 'react'
@@ -8,8 +8,10 @@ import { Button } from '@/components/button'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/sidebar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/tabs'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/resizable'
+import { WorkspaceService } from '../bindings/curldesk'
+import type { WorkspaceEntry } from '../bindings/curldesk'
 
-const requests = [
+const defaultRequests = [
   { value: 'chat', label: 'chat.curl', command: `curl -N "https://api.example.com/v1/chat/completions" \\
   -H "Content-Type: application/json"` },
   { value: 'health', label: 'health.curl', command: 'curl "https://api.example.com/health"' },
@@ -17,6 +19,20 @@ const requests = [
 
 export default function App() {
   const [layout, setLayout] = useState<'vertical' | 'horizontal'>('vertical')
+  const [requests, setRequests] = useState(defaultRequests)
+  const [activeRequest, setActiveRequest] = useState(defaultRequests[0].value)
+
+  const openFile = async (entry: WorkspaceEntry) => {
+    try {
+      const command = await WorkspaceService.ReadFile(entry.path)
+      setRequests((current) => current.some((request) => request.value === entry.path)
+        ? current.map((request) => request.value === entry.path ? { ...request, command } : request)
+        : [...current, { value: entry.path, label: entry.name, command }])
+      setActiveRequest(entry.path)
+    } catch (error) {
+      console.error('Unable to open curl file', error)
+    }
+  }
 
   return (
     <div className="flex h-screen flex-col">
@@ -33,14 +49,13 @@ export default function App() {
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <SidebarProvider className="!min-h-0 h-full">
-          <AppSidebar />
+          <AppSidebar onOpenFile={openFile} />
           <SidebarInset>
-            <Tabs defaultValue="chat" className="flex min-h-0 flex-1 flex-col">
+            <Tabs value={activeRequest} onValueChange={setActiveRequest} className="flex min-h-0 flex-1 flex-col">
             <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
               <SidebarTrigger />
               <TabsList>
                 {requests.map((request) => <TabsTrigger key={request.value} value={request.value}>{request.label}</TabsTrigger>)}
-                <Button variant="ghost" size="icon" aria-label="New curl">+</Button>
               </TabsList>
               <Button size="sm" className="ml-auto"><Play /> Run</Button>
             </div>
@@ -60,7 +75,7 @@ export default function App() {
                   <ResizablePanel defaultSize="32%" minSize="18%" className="resizable-panel">
                     <section className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
                       <div className="flex h-10 shrink-0 items-center justify-between border-b px-4">
-                        <div className="flex items-center gap-2 text-sm font-medium"><PanelBottom /> Output</div>
+                        <div className="text-sm font-medium">Output</div>
                         <div className="flex items-center gap-2">
                           <Button
                             variant={layout === 'vertical' ? 'secondary' : 'ghost'}

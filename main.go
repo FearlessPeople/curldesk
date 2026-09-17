@@ -18,6 +18,9 @@ func main() {
 		Name:        "CurlDesk",
 		Description: "A local-first curl workbench",
 		Icon:        appIcon,
+		Services: []application.Service{
+			application.NewService(&WorkspaceService{}),
+		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
 		},

@@ -30,12 +30,11 @@ body { min-width: 960px; }
 .resizable-group { min-height: 0; min-width: 0; overflow: hidden; }
 .resizable-group[data-panel-group-direction="vertical"] { flex-direction: column; }
 .resizable-panel { min-height: 0; min-width: 0; overflow: hidden; }
-.resizable-handle { position: relative; display: flex; flex: 0 0 6px; align-items: center; justify-content: center; border-color: transparent; background: transparent; transition: background-color 120ms ease; }
-.resizable-handle:hover, .resizable-handle:focus-visible { border-color: hsl(var(--border)); background: hsl(var(--muted)); }
+.resizable-handle { position: relative; display: flex; flex: 0 0 6px; align-items: center; justify-content: center; border-color: hsl(var(--border)); background: hsl(var(--background)); transition: background-color 120ms ease; }
+.resizable-handle:hover, .resizable-handle:focus-visible { background: hsl(var(--muted)); }
 .resizable-group[data-panel-group-direction="vertical"] > .resizable-handle { width: 100%; height: 6px; cursor: row-resize; border-top-width: 1px; border-bottom-width: 1px; }
 .resizable-group[data-panel-group-direction="horizontal"] > .resizable-handle { width: 6px; height: 100%; cursor: col-resize; border-right-width: 1px; border-left-width: 1px; }
-.resizable-handle > div { pointer-events: none; display: flex; align-items: center; justify-content: center; border: 1px solid hsl(var(--border)); border-radius: 0.25rem; background: hsl(var(--muted)); opacity: 0; transition: opacity 120ms ease; }
-.resizable-handle:hover > div, .resizable-handle:focus-visible > div { opacity: 1; }
+.resizable-handle > div { pointer-events: none; display: flex; align-items: center; justify-content: center; border: 1px solid hsl(var(--border)); border-radius: 0.25rem; background: hsl(var(--muted)); }
 .resizable-group[data-panel-group-direction="vertical"] .resizable-handle > div { width: 2rem; height: 0.75rem; }
 .resizable-group[data-panel-group-direction="vertical"] .resizable-handle > div svg { transform: rotate(90deg); }
 .resizable-group[data-panel-group-direction="horizontal"] .resizable-handle > div { width: 0.75rem; height: 2rem; }
