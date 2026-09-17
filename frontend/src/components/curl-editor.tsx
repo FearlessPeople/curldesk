@@ -149,7 +149,35 @@ export function CurlEditor({ value, fontSize = 14, onChange, onRun, onStop, runn
     })
     const view = new EditorView({ state, parent: editorRef.current })
     viewRef.current = view
-    return () => view.destroy()
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const modifier = event.metaKey || event.ctrlKey
+      if (!modifier) return
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        const line = view.state.doc.lineAt(view.state.selection.main.head)
+        onRunRef.current(view.state.doc.toString(), line.number)
+      }
+      if (event.key === '/') {
+        event.preventDefault()
+        const selection = view.state.selection.main
+        const fromLine = view.state.doc.lineAt(selection.from)
+        const toLine = view.state.doc.lineAt(selection.to)
+        const lines = []
+        for (let number = fromLine.number; number <= toLine.number; number += 1) lines.push(view.state.doc.line(number))
+        const shouldUncomment = lines.every((line) => /^\s*#\s?/.test(line.text) || line.text.trim() === '')
+        view.dispatch({ changes: lines.map((line) => {
+          const marker = line.text.match(/^(\s*)#\s?/)?.[0]
+          return shouldUncomment && marker
+            ? { from: line.from, to: line.from + marker.length, insert: line.text.match(/^(\s*)/)?.[0] || '' }
+            : { from: line.from, to: line.from, insert: '# ' }
+        }) })
+      }
+    }
+    view.dom.addEventListener('keydown', handleKeyDown)
+    return () => {
+      view.dom.removeEventListener('keydown', handleKeyDown)
+      view.destroy()
+    }
   }, [fontSize])
 
   useEffect(() => {

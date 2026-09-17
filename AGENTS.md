@@ -21,7 +21,7 @@ This document is the working contract for Codex and other contributors modifying
 
 ## State and persistence
 
-- User preferences are stored locally under the `curldesk-settings` key.
+- User preferences are stored in the workspace `settings.yaml`; the `curldesk-settings` local key is retained as a browser fallback for compatibility.
 - Keep settings backward compatible when adding fields; provide defaults in `defaultSettings`.
 - Curl files remain local workspace files and should continue to use the existing `WorkspaceService` APIs.
 - Do not add a remote service or telemetry without explicit product approval.

@@ -1,4 +1,4 @@
-import { Check, Code2, Copy, Github, LayoutPanelLeft, LayoutPanelTop, LoaderCircle, Monitor, Moon, Palette, RefreshCw, Settings2, SlidersHorizontal, Sun, X } from 'lucide-react'
+import { Check, Code2, Copy, Download, Github, LayoutPanelLeft, LayoutPanelTop, LoaderCircle, Monitor, Moon, Palette, RefreshCw, Settings2, SlidersHorizontal, Sun, X } from 'lucide-react'
 import { Browser } from '@wailsio/runtime'
 import { Events } from '@wailsio/runtime'
 import { Window } from '@wailsio/runtime'
@@ -6,6 +6,8 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 
 import { AppSidebar } from '@/components/app-sidebar'
 import { Button } from '@/components/button'
+import { Input } from '@/components/input'
+import { Alert } from '@/components/alert'
 import { CurlEditor } from '@/components/curl-editor'
 import { OutputEditor } from '@/components/output-editor'
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from '@/components/sidebar'
@@ -33,6 +35,12 @@ type AppSettings = {
 
 type ThemeColor = 'blue' | 'violet' | 'emerald' | 'orange' | 'rose'
 type Appearance = 'light' | 'dark' | 'system'
+type Environments = Record<string, Record<string, string>>
+type RequestResult = {
+  output: string
+  runInfo: { status: number; durationMs: number; requestSize: number; responseSize: number; headers: string } | null
+  runStatus: 'ready' | 'failed'
+}
 
 type ThemePalette = {
   background: string
@@ -147,6 +155,10 @@ function isNewerVersion(latest: string, current: string) {
   return false
 }
 
+function resolveEnvironment(command: string, variables: Record<string, string>) {
+  return command.replace(/\{\{\s*([A-Za-z_][\w-]*)\s*\}\}/g, (match, key: string) => variables[key] ?? match)
+}
+
 export default function App() {
   const [layout, setLayout] = useState<'vertical' | 'horizontal'>('vertical')
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -154,8 +166,11 @@ export default function App() {
   const [updateOpen, setUpdateOpen] = useState(false)
   const [updateState, setUpdateState] = useState<'checking' | 'latest' | 'available' | 'error'>('checking')
   const [latestRelease, setLatestRelease] = useState<{ version: string; url: string } | null>(null)
-  const [settingsSection, setSettingsSection] = useState<'general' | 'editor'>('general')
+  const [settingsSection, setSettingsSection] = useState<'general' | 'editor' | 'environment'>('general')
   const [settings, setSettings] = useState<AppSettings>(loadSettings)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const [environments, setEnvironments] = useState<Environments>({ Dev: {} })
+  const [activeEnvironment, setActiveEnvironment] = useState('Dev')
   const theme = themeColors[settings.themeColor]
   const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
   const isDark = settings.appearance === 'dark' || (settings.appearance === 'system' && systemDark)
@@ -168,6 +183,8 @@ export default function App() {
   const [copiedOutput, setCopiedOutput] = useState(false)
   const [outputView, setOutputView] = useState<'response' | 'headers'>('response')
   const [runInfo, setRunInfo] = useState<{ status: number; durationMs: number; requestSize: number; responseSize: number; headers: string } | null>(null)
+  const [requestResults, setRequestResults] = useState<Record<string, RequestResult>>({})
+  const [errorMessage, setErrorMessage] = useState('')
   const runId = useRef(0)
   const activeStreamId = useRef('')
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
@@ -184,6 +201,17 @@ export default function App() {
     } catch (error) {
       console.error('Unable to copy output', error)
     }
+  }
+
+  const downloadOutput = () => {
+    if (!runOutput) return
+    const blob = new Blob([displayOutput], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${outputView}.txt`
+    link.click()
+    URL.revokeObjectURL(url)
   }
 
   const syncOpenRequests = async () => {
@@ -206,6 +234,47 @@ export default function App() {
     return unsubscribe
   }, [])
 
+  useEffect(() => {
+    void WorkspaceService.ListEnvironments().then((loaded) => {
+      const next = loaded && Object.keys(loaded).length > 0 ? loaded : { Dev: {} }
+      setEnvironments(next)
+      setActiveEnvironment((current) => next[current] ? current : Object.keys(next)[0])
+    }).catch((error) => console.error('Unable to load environments', error))
+  }, [])
+
+  useEffect(() => {
+    void WorkspaceService.LoadSettings().then((stored) => {
+      if (stored && Object.keys(stored).length > 0) {
+        setSettings((current) => ({
+          ...current,
+          ...(stored.autoSave !== undefined ? { autoSave: stored.autoSave === 'true' } : {}),
+          ...(stored.editorFontSize ? { editorFontSize: Number(stored.editorFontSize) || current.editorFontSize } : {}),
+          ...(stored.wrapOutput !== undefined ? { wrapOutput: stored.wrapOutput === 'true' } : {}),
+          ...(stored.themeColor && stored.themeColor in themeColors ? { themeColor: stored.themeColor as ThemeColor } : {}),
+          ...(stored.appearance && ['light', 'dark', 'system'].includes(stored.appearance) ? { appearance: stored.appearance as Appearance } : {}),
+        }))
+      }
+      setSettingsLoaded(true)
+    }).catch((error) => {
+      console.error('Unable to load settings', error)
+      setSettingsLoaded(true)
+    })
+  }, [])
+
+  useEffect(() => {
+    const result = requestResults[activeRequest]
+    setRunOutput(result?.output || '')
+    setRunInfo(result?.runInfo || null)
+    setRunStatus(result?.runStatus || 'ready')
+    setOutputView('response')
+  }, [activeRequest, requestResults])
+
+  useEffect(() => {
+    if (!errorMessage) return
+    const timer = window.setTimeout(() => setErrorMessage(''), 5000)
+    return () => window.clearTimeout(timer)
+  }, [errorMessage])
+
   useEffect(() => Events.On(CURL_STREAM_EVENT, (event) => {
     const data = event.data as { runId?: string; chunk?: string } | undefined
     if (!data || data.runId !== activeStreamId.current || !data.chunk) return
@@ -218,8 +287,16 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (!settingsLoaded) return
     localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings))
-  }, [settings])
+    void WorkspaceService.SaveSettings({
+      autoSave: String(settings.autoSave),
+      editorFontSize: String(settings.editorFontSize),
+      wrapOutput: String(settings.wrapOutput),
+      themeColor: settings.themeColor,
+      appearance: settings.appearance,
+    }).catch((error) => console.error('Unable to save settings', error))
+  }, [settings, settingsLoaded])
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
@@ -242,6 +319,7 @@ export default function App() {
       setActiveRequest(entry.path)
     } catch (error) {
       console.error('Unable to open curl file', error)
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to open curl file.')
     }
   }
 
@@ -266,13 +344,22 @@ export default function App() {
         await Events.Emit('curldesk:collections-changed')
       } catch (error) {
         console.error('Unable to save curl file', error)
+        setErrorMessage(error instanceof Error ? error.message : 'Unable to save curl file.')
       }
     }, 600)
   }
 
+  const saveEnvironments = (next: Environments) => {
+    setEnvironments(next)
+    void WorkspaceService.SaveEnvironments(next).catch((error) => {
+      console.error('Unable to save environments', error)
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to save environments.')
+    })
+  }
+
   const runRequestBlock = async (command: string, startLine: number) => {
     if (!activeRequest || runStatus === 'running') return
-    const requestBlock = extractRequestBlock(command, startLine)
+    const requestBlock = extractRequestBlock(resolveEnvironment(command, environments[activeEnvironment] || {}), startLine)
     if (!requestBlock) return
     const currentRunId = ++runId.current
     const streamId = `${Date.now()}-${currentRunId}`
@@ -285,21 +372,25 @@ export default function App() {
     try {
       const result = await CurlRunner.RunCurlStream(requestBlock, streamId)
       if (runId.current !== currentRunId) return
-      setRunOutput(result.output || `Process exited with code ${result.exitCode}.`)
-      setRunInfo({
+      const nextOutput = result.output || `Process exited with code ${result.exitCode}.`
+      const nextInfo = {
         status: result.status,
         durationMs: result.durationMs,
         requestSize: result.requestSize,
         responseSize: result.responseSize,
         headers: result.responseHeaders,
-      })
+      }
+      setRunOutput(nextOutput)
+      setRunInfo(nextInfo)
       setRunStatus(result.exitCode === 0 ? 'ready' : 'failed')
+      setRequestResults((current) => ({ ...current, [activeRequest]: { output: nextOutput, runInfo: nextInfo, runStatus: result.exitCode === 0 ? 'ready' : 'failed' } }))
       setRunningLine(null)
     } catch (error) {
       if (runId.current !== currentRunId) return
       console.error('Unable to run curl command', error)
       setRunOutput(error instanceof Error ? error.message : 'Unable to run curl command.')
       setRunStatus('failed')
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to run curl command.')
       setRunningLine(null)
     }
   }
@@ -312,6 +403,7 @@ export default function App() {
     setRunStatus('ready')
     setRunOutput('Request stopped.')
     setRunInfo(null)
+    setRequestResults((current) => ({ ...current, [activeRequest]: { output: 'Request stopped.', runInfo: null, runStatus: 'ready' } }))
     try {
       await CurlRunner.StopCurl()
     } catch (error) {
@@ -370,6 +462,12 @@ export default function App() {
           CurlDesk
         </div>
       </header>
+
+      {errorMessage && (
+        <Alert className="pointer-events-auto fixed bottom-10 right-4 z-[80] max-w-sm border-destructive/30 bg-background text-destructive shadow-lg">
+          {errorMessage}
+        </Alert>
+      )}
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <SidebarProvider className="!min-h-0 h-full">
@@ -497,6 +595,21 @@ export default function App() {
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                className="h-7 w-7 shrink-0 rounded-md"
+                                aria-label="Download output"
+                                onClick={downloadOutput}
+                                disabled={!runOutput}
+                              >
+                                <Download />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top">Download output</TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
                                 className={`h-7 w-7 shrink-0 rounded-md ${layout === 'vertical' ? 'bg-muted text-foreground' : ''}`}
                                 aria-label="Vertical layout"
                                 aria-pressed={layout === 'vertical'}
@@ -572,6 +685,15 @@ export default function App() {
                         >
                           <Code2 />
                           <span>Editor</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          isActive={settingsSection === 'environment'}
+                          onClick={() => setSettingsSection('environment')}
+                        >
+                          <SlidersHorizontal />
+                          <span>Environment</span>
                         </SidebarMenuButton>
                       </SidebarMenuItem>
                     </SidebarMenu>
@@ -663,6 +785,39 @@ export default function App() {
                   </div>
                 </div>
               )}
+              {settingsSection === 'environment' && (
+                <div className="space-y-5">
+                  <div>
+                    <h3 className="text-base font-semibold">Environment</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">Manage variables used by curl files. Reference them with {'{{variable}}'}.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {Object.keys(environments).map((name) => (
+                      <Button key={name} variant={activeEnvironment === name ? 'secondary' : 'outline'} size="sm" onClick={() => setActiveEnvironment(name)}>
+                        {name}
+                      </Button>
+                    ))}
+                    <Button variant="outline" size="sm" onClick={() => saveEnvironments({ ...environments, [`Environment-${Object.keys(environments).length + 1}`]: {} })}>Add environment</Button>
+                  </div>
+                  <div className="space-y-2 rounded-md border p-4">
+                    {Object.entries(environments[activeEnvironment] || {}).map(([key, value]) => (
+                      <div key={key} className="flex items-center gap-2">
+                        <Input value={key} readOnly className="h-8 w-40 font-mono text-xs" aria-label={`Variable name ${key}`} />
+                        <Input value={value} className="h-8 flex-1 font-mono text-xs" aria-label={`Value for ${key}`} onChange={(event) => saveEnvironments({ ...environments, [activeEnvironment]: { ...environments[activeEnvironment], [key]: event.target.value } })} />
+                        <Button variant="ghost" size="icon" className="size-8" aria-label={`Remove ${key}`} onClick={() => {
+                          const next = { ...environments[activeEnvironment] }
+                          delete next[key]
+                          saveEnvironments({ ...environments, [activeEnvironment]: next })
+                        }}><X className="size-4" /></Button>
+                      </div>
+                    ))}
+                    <Button variant="outline" size="sm" onClick={() => {
+                      const key = `VARIABLE_${Object.keys(environments[activeEnvironment] || {}).length + 1}`
+                      saveEnvironments({ ...environments, [activeEnvironment]: { ...environments[activeEnvironment], [key]: '' } })
+                    }}>Add variable</Button>
+                  </div>
+                </div>
+              )}
               </section>
             </main>
           </SidebarProvider>
@@ -704,6 +859,24 @@ export default function App() {
 
         <footer className="flex h-8 shrink-0 items-center gap-3 border-t px-4 text-xs text-muted-foreground">
         <span>Workspace ready</span>
+        <Separator orientation="vertical" className="h-3" />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground">
+              Environment: {activeEnvironment}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="w-40">
+            {Object.keys(environments).map((name) => (
+              <DropdownMenuItem key={name} onSelect={() => setActiveEnvironment(name)}>
+                <span className="flex-1">{name}</span>
+                {name === activeEnvironment && <Check className="size-3.5" />}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => { setSettingsSection('environment'); setSettingsOpen(true) }}>Manage environments</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Separator orientation="vertical" className="h-3" />
         <Tooltip>
           <TooltipTrigger asChild>

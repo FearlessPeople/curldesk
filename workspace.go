@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -19,6 +20,135 @@ type WorkspaceEntry struct {
 
 type WorkspaceService struct {
 	root string
+}
+
+func (w *WorkspaceService) ListEnvironments() (map[string]map[string]string, error) {
+	if err := w.ensureRoot(); err != nil {
+		return nil, err
+	}
+	path := filepath.Join(w.root, "environments.yaml")
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return map[string]map[string]string{"Dev": {}}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read environments: %w", err)
+	}
+	return parseEnvironmentsYAML(string(data)), nil
+}
+
+func (w *WorkspaceService) SaveEnvironments(environments map[string]map[string]string) error {
+	if err := w.ensureRoot(); err != nil {
+		return err
+	}
+	var builder strings.Builder
+	for name, variables := range environments {
+		if !validName(name) {
+			continue
+		}
+		builder.WriteString(fmt.Sprintf("%s:\n", name))
+		for key, value := range variables {
+			if validEnvironmentKey(key) {
+				builder.WriteString(fmt.Sprintf("  %s: %s\n", key, strconv.Quote(value)))
+			}
+		}
+	}
+	return os.WriteFile(filepath.Join(w.root, "environments.yaml"), []byte(builder.String()), 0o644)
+}
+
+func (w *WorkspaceService) LoadSettings() (map[string]string, error) {
+	if err := w.ensureRoot(); err != nil {
+		return nil, err
+	}
+	data, err := os.ReadFile(filepath.Join(w.root, "settings.yaml"))
+	if os.IsNotExist(err) {
+		return map[string]string{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read settings: %w", err)
+	}
+	return parseFlatYAML(string(data)), nil
+}
+
+func (w *WorkspaceService) SaveSettings(settings map[string]string) error {
+	if err := w.ensureRoot(); err != nil {
+		return err
+	}
+	var builder strings.Builder
+	for key, value := range settings {
+		if validEnvironmentKey(key) {
+			builder.WriteString(fmt.Sprintf("%s: %s\n", key, strconv.Quote(value)))
+		}
+	}
+	return os.WriteFile(filepath.Join(w.root, "settings.yaml"), []byte(builder.String()), 0o644)
+}
+
+func validEnvironmentKey(key string) bool {
+	if key == "" {
+		return false
+	}
+	for _, char := range key {
+		if !(char == '_' || char == '-' || char >= 'A' && char <= 'Z' || char >= 'a' && char <= 'z' || char >= '0' && char <= '9') {
+			return false
+		}
+	}
+	return true
+}
+
+func parseEnvironmentsYAML(content string) map[string]map[string]string {
+	result := make(map[string]map[string]string)
+	current := ""
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if !strings.HasPrefix(line, " ") && strings.HasSuffix(trimmed, ":") {
+			current = strings.TrimSuffix(trimmed, ":")
+			result[current] = map[string]string{}
+			continue
+		}
+		if current == "" || !strings.Contains(trimmed, ":") {
+			continue
+		}
+		parts := strings.SplitN(trimmed, ":", 2)
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
+			if decoded, err := strconv.Unquote(value); err == nil {
+				value = decoded
+			}
+		}
+		if validEnvironmentKey(key) {
+			result[current][key] = value
+		}
+	}
+	if len(result) == 0 {
+		result["Dev"] = map[string]string{}
+	}
+	return result
+}
+
+func parseFlatYAML(content string) map[string]string {
+	result := make(map[string]string)
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || !strings.Contains(trimmed, ":") {
+			continue
+		}
+		parts := strings.SplitN(trimmed, ":", 2)
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
+			if decoded, err := strconv.Unquote(value); err == nil {
+				value = decoded
+			}
+		}
+		if validEnvironmentKey(key) {
+			result[key] = value
+		}
+	}
+	return result
 }
 
 func (w *WorkspaceService) initialize() {

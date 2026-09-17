@@ -25,6 +25,14 @@ export function ListWorkspace(): $CancellablePromise<$models.WorkspaceEntry[] | 
     return $Call.ByID(1335838253);
 }
 
+export function ListEnvironments(): $CancellablePromise<Record<string, Record<string, string>>> {
+    return $Call.ByName("main.WorkspaceService.ListEnvironments");
+}
+
+export function LoadSettings(): $CancellablePromise<Record<string, string>> {
+    return $Call.ByName("main.WorkspaceService.LoadSettings");
+}
+
 export function ReadFile(relative: string): $CancellablePromise<string> {
     return $Call.ByID(2517090602, relative);
 }
@@ -35,4 +43,12 @@ export function RenameEntry(relative: string, name: string): $CancellablePromise
 
 export function SaveFile(relative: string, content: string): $CancellablePromise<void> {
     return $Call.ByID(3758940195, relative, content);
+}
+
+export function SaveEnvironments(environments: Record<string, Record<string, string>>): $CancellablePromise<void> {
+    return $Call.ByName("main.WorkspaceService.SaveEnvironments", environments);
+}
+
+export function SaveSettings(settings: Record<string, string>): $CancellablePromise<void> {
+    return $Call.ByName("main.WorkspaceService.SaveSettings", settings);
 }

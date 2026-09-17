@@ -258,6 +258,7 @@ func (r *CurlRunner) StopCurl() error {
 }
 
 func parseCurlCommand(command string) ([]string, error) {
+	command = stripShellComments(command)
 	command = strings.ReplaceAll(command, "\\\r\n", "")
 	command = strings.ReplaceAll(command, "\\\n", "")
 	var args []string
@@ -315,4 +316,50 @@ func parseCurlCommand(command string) ([]string, error) {
 		return nil, errors.New("command must start with curl")
 	}
 	return args[1:], nil
+}
+
+// stripShellComments removes shell comments while preserving # inside quoted
+// URLs, headers, and request bodies.
+func stripShellComments(command string) string {
+	var result strings.Builder
+	var quote rune
+	escaped := false
+	inComment := false
+	for _, char := range command {
+		if inComment {
+			if char == '\n' {
+				inComment = false
+				result.WriteRune(char)
+			}
+			continue
+		}
+		if escaped {
+			result.WriteRune(char)
+			escaped = false
+			continue
+		}
+		if char == '\\' && quote != '\'' {
+			result.WriteRune(char)
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			result.WriteRune(char)
+			if char == quote {
+				quote = 0
+			}
+			continue
+		}
+		if char == '\'' || char == '"' {
+			quote = char
+			result.WriteRune(char)
+			continue
+		}
+		if char == '#' {
+			inComment = true
+			continue
+		}
+		result.WriteRune(char)
+	}
+	return result.String()
 }
