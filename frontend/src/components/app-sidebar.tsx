@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { Events } from '@wailsio/runtime'
 import {
-  ChevronRight, Download, FilePlus2, Folder, FolderPlus, MoreHorizontal,
-  Pencil, Plus, RefreshCw, Trash2, Upload,
+  ChevronRight, ChevronsDownUp, ChevronsUpDown, Download, FilePlus2, Folder,
+  FolderPlus, MoreHorizontal, Pencil, Trash2, Upload,
 } from 'lucide-react'
 
 import { WorkspaceService } from '../../bindings/curldesk'
@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/input'
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel,
-  SidebarHeader, SidebarMenu, SidebarMenuAction, SidebarMenuButton,
+  SidebarMenu, SidebarMenuAction, SidebarMenuButton,
   SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem,
   SidebarRail,
 } from '@/components/sidebar'
@@ -53,6 +53,7 @@ export function AppSidebar({ onOpenFile }: AppSidebarProps) {
   const [renameTarget, setRenameTarget] = useState<WorkspaceEntry | null>(null)
   const [renameName, setRenameName] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<WorkspaceEntry | null>(null)
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
   const importInputRef = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(async () => {
@@ -170,10 +171,23 @@ export function AppSidebar({ onOpenFile }: AppSidebarProps) {
     setDeleteTarget(null)
   }
 
+  const toggleFolder = (path: string, open: boolean) => {
+    setCollapsedFolders((current) => {
+      const next = new Set(current)
+      if (open) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  const expandAll = () => setCollapsedFolders(new Set())
+  const collapseAll = () => setCollapsedFolders(new Set(folders.map((folder) => folder.path)))
+  const allFoldersExpanded = folders.length > 0 && collapsedFolders.size === 0
+
   const renderFolder = (folder: WorkspaceEntry, depth = 0) => {
     const children = entries.filter((entry) => parentPath(entry.path) === folder.path)
     return (
-      <Collapsible key={folder.path} defaultOpen className="group/collapsible">
+      <Collapsible key={folder.path} open={!collapsedFolders.has(folder.path)} onOpenChange={(open) => toggleFolder(folder.path, open)} className="group/collapsible">
         <SidebarMenuItem>
           <div className="group/folder-item relative">
             <CollapsibleTrigger asChild>
@@ -241,32 +255,27 @@ export function AppSidebar({ onOpenFile }: AppSidebarProps) {
 
   return (
     <Sidebar collapsible="icon" className="!absolute !inset-y-0 !h-full">
-      <SidebarHeader className="border-b">
-        <SidebarMenu>
-          <SidebarMenuItem>
-              <SidebarMenuButton className="w-full justify-center">
-              <Folder /><span>workspace</span>
-            </SidebarMenuButton>
-            <SidebarMenuAction showOnHover onClick={() => void refresh()} aria-label="Refresh workspace"><RefreshCw /></SidebarMenuAction>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <div className="-mx-2 border-b px-2">
-            <div className="flex items-center justify-between">
+          <div className="-mx-2 -mt-2 h-12 border-b px-2">
+            <div className="flex h-full items-center justify-between">
               <SidebarGroupLabel>Collections</SidebarGroupLabel>
-            <div className="-mr-1.5 flex items-center gap-1">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="New collection item"><Plus /></Button></DropdownMenuTrigger>
-                <DropdownMenuContent side="right" align="start" className="w-48">
-                  <DropdownMenuItem onSelect={() => beginCreate('file')}><FilePlus2 /> New curl file</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => beginCreate('folder')}><FolderPlus /> New folder</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+            <div className="-mr-1.5 flex items-center gap-0.5">
+              <Button className="size-8 rounded-sm [&>svg]:size-3.5" variant="ghost" size="icon" aria-label="New curl file" title="New curl file" onClick={() => beginCreate('file')}><FilePlus2 /></Button>
+              <Button className="size-8 rounded-sm [&>svg]:size-3.5" variant="ghost" size="icon" aria-label="New folder" title="New folder" onClick={() => beginCreate('folder')}><FolderPlus /></Button>
+              <Button
+                className="size-8 rounded-sm [&>svg]:size-3.5"
+                variant="ghost"
+                size="icon"
+                aria-label={allFoldersExpanded ? 'Collapse all folders' : 'Expand all folders'}
+                title={allFoldersExpanded ? 'Collapse all folders' : 'Expand all folders'}
+                onClick={allFoldersExpanded ? collapseAll : expandAll}
+              >
+                {allFoldersExpanded ? <ChevronsUpDown /> : <ChevronsDownUp />}
+              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" aria-label="Collection actions" title="Collection actions"><MoreHorizontal /></Button>
+                  <Button className="size-8 rounded-sm [&>svg]:size-3.5" variant="ghost" size="icon" aria-label="Collection actions" title="Collection actions"><MoreHorizontal /></Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="right" align="start" className="w-48">
                   <DropdownMenuItem onSelect={() => importInputRef.current?.click()}><Upload /> Import curl files</DropdownMenuItem>

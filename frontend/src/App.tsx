@@ -119,8 +119,8 @@ export default function App() {
                 {requests.map((request) => {
                   const method = detectMethod(request.command)
                   return (
-                    <TabsTrigger key={request.value} value={request.value} className="group gap-1.5 px-2.5">
-                      <span className={`font-mono text-[11px] font-semibold ${methodColor(method)}`}>{method}</span>
+                    <TabsTrigger key={request.value} value={request.value} className="group gap-1 px-2 data-[state=active]:ring-1 data-[state=active]:ring-primary/25">
+                      <span className={`font-mono text-[10px] font-semibold ${methodColor(method)}`}>{method}</span>
                       <span>{request.label.replace(/\.curl$/i, '')}</span>
                       <span
                         role="button"
@@ -152,12 +152,12 @@ export default function App() {
             )}
 
             {requests.map((request) => (
-              <TabsContent key={request.value} value={request.value} className="mt-0 flex min-h-0 flex-1 flex-col">
+              <TabsContent key={request.value} value={request.value} className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
                 <ResizablePanelGroup orientation={layout} className="min-h-0 flex-1">
                   <ResizablePanel defaultSize="68%" minSize="24%" className="resizable-panel">
                     <section className="flex h-full min-h-0 flex-1 overflow-hidden">
-                      <div className="w-12 shrink-0 select-none border-r px-2 py-4 text-right font-mono text-xs leading-6 text-muted-foreground">
-                        {request.command.split('\n').map((_, index) => <div key={index}>{String(index + 1).padStart(2, '0')}</div>)}
+                      <div className="w-10 shrink-0 select-none border-r px-1 py-4 text-right font-mono text-xs leading-6 text-muted-foreground">
+                        {request.command.split('\n').map((_, index) => <div key={index}>{index + 1}</div>)}
                       </div>
                       <textarea aria-label={`${request.label} command editor`} className="min-h-full min-w-0 flex-1 resize-none bg-transparent p-4 font-mono text-sm leading-6 outline-none" value={request.command} onChange={(event) => updateCommand(request.value, event.target.value)} spellCheck={false} />
                     </section>
@@ -189,7 +189,12 @@ export default function App() {
                           <span className="text-xs text-muted-foreground">{saveStatus[request.value] === 'saving' ? 'Saving…' : saveStatus[request.value] === 'saved' ? 'Saved' : 'Ready'}</span>
                         </div>
                       </div>
-                      <pre className="min-h-0 flex-1 overflow-auto p-4 font-mono text-sm text-muted-foreground">Run a curl command to see output here.</pre>
+                      <div className="flex min-h-0 flex-1 overflow-hidden">
+                        <div className="w-10 shrink-0 select-none border-r px-1 py-4 text-right font-mono text-xs leading-6 text-muted-foreground">
+                          <div>1</div>
+                        </div>
+                        <pre className="min-h-0 flex-1 overflow-auto p-4 font-mono text-sm text-muted-foreground">Run a curl command to see output here.</pre>
+                      </div>
                     </section>
                   </ResizablePanel>
                 </ResizablePanelGroup>
