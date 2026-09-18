@@ -51,9 +51,20 @@ pnpm dev --host 127.0.0.1
 make install    # Install frontend dependencies
 make dev        # Start Wails development mode
 make build      # Build the frontend and desktop application
+make package-macos             # macOS .app + .zip
+make package-macos-arm64      # macOS Apple Silicon
+make package-macos-intel      # macOS Intel amd64
+make package-macos-universal   # macOS arm64/amd64 universal .app + .zip
+make package-windows           # Windows .exe.zip
+make package-linux             # Linux .tar.gz
+make package PLATFORM=darwin GOARCH=arm64  # Generic platform/architecture entrypoint
 make test       # Run Go tests
 make clean      # Remove generated build output
 ```
+
+Release artifacts include the app version in their filenames and are written to `dist/`. Desktop packaging uses native CGO
+toolchains, so macOS, Windows, and Linux should normally be built in separate
+native CI jobs. Override `PLATFORM`, `GOARCH`, or `DIST_DIR` when needed.
 
 For frontend-only validation:
 

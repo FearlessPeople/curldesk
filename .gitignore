@@ -3,3 +3,6 @@ frontend/dist/
 build/CurlDesk
 environments/*.env
 .DS_Store
+
+
+dist/*
