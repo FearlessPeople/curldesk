@@ -8,7 +8,7 @@ PKG ?= pnpm
 
 .PHONY: help install deps dev frontend-dev frontend-build build run \
 	test vet fmt clean package package-all package-macos package-macos-arm64 \
-	package-macos-intel package-macos-universal package-windows package-linux
+	package-macos-intel package-macos-universal package-windows package-windows-installer package-linux
 
 PLATFORM ?= $(shell go env GOOS)
 GOOS ?= $(PLATFORM)
@@ -18,6 +18,10 @@ DIST_DIR ?= dist
 PACKAGE_DIR ?= $(DIST_DIR)/$(APP_NAME)-$(GOOS)-$(GOARCH)
 PACKAGE_BIN ?= $(PACKAGE_DIR)/$(APP_NAME)$(if $(filter windows,$(GOOS)),.exe,)
 PACKAGE_CGO ?= $(if $(filter linux darwin,$(GOOS)),1,0)
+PACKAGE_LDFLAGS ?= -s -w
+ifeq ($(GOOS),windows)
+PACKAGE_LDFLAGS += -H=windowsgui
+endif
 
 help:
 	@printf '%s\n' \
@@ -31,6 +35,7 @@ help:
 	  'make package-macos-intel  打包 macOS Intel amd64 版本' \
 	  'make package-macos-universal  打包 macOS Universal .app 和 .zip' \
 	  'make package-windows  打包 Windows .exe.zip' \
+	  'make package-windows-installer  生成 Windows 安装程序' \
 	  'make package-linux  打包 Linux .tar.gz' \
 	  'make package-all    依次打包 macOS、Windows、Linux' \
 	  'make run            构建并运行桌面程序' \
@@ -85,7 +90,7 @@ package: frontend-build
 	@mkdir -p "$(PACKAGE_DIR)"
 	@echo "Building $(APP_NAME) for $(GOOS)/$(GOARCH) (CGO_ENABLED=$(PACKAGE_CGO))"
 	CGO_ENABLED=$(PACKAGE_CGO) GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
-		-trimpath -buildvcs=false -ldflags='-s -w' -o "$(PACKAGE_BIN)" .
+		-trimpath -buildvcs=false -ldflags='$(PACKAGE_LDFLAGS)' -o "$(PACKAGE_BIN)" .
 	@case "$(GOOS)" in \
 		darwin) \
 			app_dir="$(PACKAGE_DIR)/$(APP_NAME).app"; \
@@ -136,6 +141,14 @@ package-macos-universal: frontend-build
 
 package-windows:
 	$(MAKE) package GOOS=windows GOARCH=$(or $(WINDOWS_ARCH),amd64)
+
+package-windows-installer: package-windows
+	@command -v makensis >/dev/null || (echo "makensis is required to build the Windows installer" >&2; exit 1)
+	@makensis \
+		-DAPP_VERSION=$(APP_VERSION) \
+		-DEXE_PATH="$(abspath $(DIST_DIR)/$(APP_NAME)-windows-$(or $(WINDOWS_ARCH),amd64)/$(APP_NAME).exe)" \
+		-DOUTPUT_PATH="$(abspath $(DIST_DIR)/$(APP_NAME)-$(APP_VERSION)-windows-$(or $(WINDOWS_ARCH),amd64)-setup.exe)" \
+		build/windows/installer.nsi
 
 package-linux:
 	$(MAKE) package GOOS=linux GOARCH=$(or $(LINUX_ARCH),amd64)

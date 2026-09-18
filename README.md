@@ -58,6 +58,7 @@ make package-macos-arm64      # macOS Apple Silicon
 make package-macos-intel      # macOS Intel amd64
 make package-macos-universal   # macOS arm64/amd64 universal .app + .zip
 make package-windows           # Windows .exe.zip
+make package-windows-installer # Windows per-user installer (.exe)
 make package-linux             # Linux .tar.gz
 make package PLATFORM=darwin GOARCH=arm64  # Generic platform/architecture entrypoint
 make test       # Run Go tests
@@ -67,6 +68,11 @@ make clean      # Remove generated build output
 Release artifacts include the app version in their filenames and are written to `dist/`. Desktop packaging uses native CGO
 toolchains, so macOS, Windows, and Linux should normally be built in separate
 native CI jobs. Override `PLATFORM`, `GOARCH`, or `DIST_DIR` when needed.
+
+The Windows package uses the GUI subsystem, so launching `CurlDesk.exe` does not
+open a console window. `make package-windows-installer` additionally creates a
+per-user NSIS installer under `dist/`; it installs to `%LocalAppData%\\Programs\\CurlDesk`
+and does not require administrator privileges.
 
 For frontend-only validation:
 

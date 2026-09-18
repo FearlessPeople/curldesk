@@ -60,6 +60,7 @@ make package-macos-arm64                 # 打包 macOS Apple Silicon 版本
 make package-macos-intel                 # 打包 macOS Intel amd64 版本
 make package-macos-universal             # 打包 macOS arm64/amd64 通用版本
 make package-windows                     # 打包 Windows .exe.zip
+make package-windows-installer            # 生成 Windows 用户级安装程序（.exe）
 make package-linux                       # 打包 Linux .tar.gz
 make package PLATFORM=darwin GOARCH=arm64 # 通用平台/架构入口
 make test                                 # 运行 Go 测试
