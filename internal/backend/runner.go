@@ -214,6 +214,7 @@ func (r *CurlRunner) newCommand(ctx context.Context, runID string, args []string
 		r.processes = make(map[string]*exec.Cmd)
 	}
 	cmd := exec.CommandContext(ctx, executable, args...)
+	configureCurlProcess(cmd)
 	r.processes[runID] = cmd
 	r.lastRunID = runID
 	r.mu.Unlock()
