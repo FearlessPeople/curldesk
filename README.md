@@ -1,5 +1,7 @@
 # CurlDesk
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 CurlDesk is a local-first desktop workbench for writing, organizing, and running `curl` requests. It combines a compact request editor, local collections, environment variables, streaming responses, and response metadata in one desktop application.
 
 ## Features
