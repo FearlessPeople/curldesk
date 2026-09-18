@@ -1,0 +1,15 @@
+{
+  "fixed": {
+    "file_version": "0.1.1"
+  },
+  "info": {
+    "0000": {
+      "ProductVersion": "0.1.1",
+      "CompanyName": "CurlDesk",
+      "FileDescription": "A local-first curl workbench",
+      "LegalCopyright": "Copyright © CurlDesk",
+      "ProductName": "CurlDesk",
+      "Comments": "Local-first curl workbench"
+    }
+  }
+}

@@ -19,6 +19,7 @@ PACKAGE_DIR ?= $(DIST_DIR)/$(APP_NAME)-$(GOOS)-$(GOARCH)
 PACKAGE_BIN ?= $(PACKAGE_DIR)/$(APP_NAME)$(if $(filter windows,$(GOOS)),.exe,)
 PACKAGE_CGO ?= $(if $(filter linux darwin,$(GOOS)),1,0)
 PACKAGE_LDFLAGS ?= -s -w
+PACKAGE_RESOURCE ?= curldesk_windows_$(GOARCH).syso
 ifeq ($(GOOS),windows)
 PACKAGE_LDFLAGS += -H=windowsgui
 endif
@@ -89,6 +90,9 @@ package: frontend-build
 	esac
 	@mkdir -p "$(PACKAGE_DIR)"
 	@echo "Building $(APP_NAME) for $(GOOS)/$(GOARCH) (CGO_ENABLED=$(PACKAGE_CGO))"
+ifeq ($(GOOS),windows)
+	wails3 generate syso -arch $(GOARCH) -icon build/windows/icon.ico -manifest build/windows/wails.exe.manifest -info build/windows/info.json -out "$(PACKAGE_RESOURCE)"
+endif
 	CGO_ENABLED=$(PACKAGE_CGO) GOOS=$(GOOS) GOARCH=$(GOARCH) go build \
 		-trimpath -buildvcs=false -ldflags='$(PACKAGE_LDFLAGS)' -o "$(PACKAGE_BIN)" .
 	@case "$(GOOS)" in \
@@ -102,6 +106,7 @@ package: frontend-build
 			;; \
 		windows) \
 			(cd "$(PACKAGE_DIR)" && zip -qry "../$(APP_NAME)-$(APP_VERSION)-$(GOOS)-$(GOARCH).zip" "$(APP_NAME).exe"); \
+			rm -f "$(PACKAGE_RESOURCE)"; \
 			;; \
 		linux) \
 			(cd "$(PACKAGE_DIR)" && tar -czf "../$(APP_NAME)-$(APP_VERSION)-$(GOOS)-$(GOARCH).tar.gz" "$(APP_NAME)"); \
