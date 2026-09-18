@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Events } from '@wailsio/runtime'
 import {
-  ChevronRight, ChevronsDownUp, ChevronsUpDown, Download, FilePlus2, Folder,
-  FolderPlus, MoreHorizontal, Pencil, Trash2, Upload,
+  ChevronRight, ChevronsDownUp, ChevronsUpDown, FilePlus2, Folder,
+  FolderPlus, MoreHorizontal, Pencil, Trash2,
 } from 'lucide-react'
 
 import { WorkspaceService } from '../../bindings/curldesk'
@@ -13,6 +13,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/dialog'
 import { Input } from '@/components/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/tooltip'
+import { WorkspaceSwitcher } from '@/features/workspace/workspace-switcher'
+import type { WorkspaceInfo } from '../../bindings/curldesk/models'
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupLabel,
   SidebarMenu, SidebarMenuAction, SidebarMenuButton,
@@ -20,7 +22,7 @@ import {
   SidebarRail,
 } from '@/components/sidebar'
 
-type AppSidebarProps = { onOpenFile?: (entry: WorkspaceEntry) => void }
+type AppSidebarProps = { onOpenFile?: (entry: WorkspaceEntry) => void; workspace: WorkspaceInfo; onWorkspaceChanged: (workspace: WorkspaceInfo) => void }
 type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
 const COLLECTIONS_CHANGED_EVENT = 'curldesk:collections-changed'
 
@@ -45,7 +47,7 @@ function methodColor(method: RequestMethod) {
   return 'text-purple-600 dark:text-purple-400'
 }
 
-export function AppSidebar({ onOpenFile }: AppSidebarProps) {
+export function AppSidebar({ onOpenFile, workspace, onWorkspaceChanged }: AppSidebarProps) {
   const [entries, setEntries] = useState<WorkspaceEntry[]>([])
   const [methods, setMethods] = useState<Record<string, RequestMethod>>({})
   const [createMode, setCreateMode] = useState<'file' | 'folder' | null>(null)
@@ -55,7 +57,6 @@ export function AppSidebar({ onOpenFile }: AppSidebarProps) {
   const [renameName, setRenameName] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<WorkspaceEntry | null>(null)
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set())
-  const importInputRef = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -85,33 +86,6 @@ export function AppSidebar({ onOpenFile }: AppSidebarProps) {
   const folders = useMemo(() => entries.filter((entry) => entry.isDir), [entries])
   const files = useMemo(() => entries.filter((entry) => !entry.isDir), [entries])
 
-  const exportWorkspace = async () => {
-    try {
-      const exportedFiles = await Promise.all(files.map(async (file) => ({
-        path: file.path,
-        content: await WorkspaceService.ReadFile(file.path),
-      })))
-      const blob = new Blob([JSON.stringify({ version: 1, files: exportedFiles }, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = 'curldesk-collections.json'
-      link.click()
-      URL.revokeObjectURL(url)
-    } catch (error) { console.error('Unable to export workspace', error) }
-  }
-
-  const importWorkspace = async (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(event.target.files ?? []).filter((file) => file.name.toLowerCase().endsWith('.curl'))
-    for (const file of selectedFiles) {
-      try {
-        const created = await WorkspaceService.CreateFile('', file.name)
-        await WorkspaceService.SaveFile(created.path, await file.text())
-      } catch (error) { console.error(`Unable to import ${file.name}`, error) }
-    }
-    event.target.value = ''
-    await Events.Emit(COLLECTIONS_CHANGED_EVENT)
-  }
 
   const beginCreate = (mode: 'file' | 'folder', parent = '.') => {
     setCreateMode(mode)
@@ -266,28 +240,29 @@ export function AppSidebar({ onOpenFile }: AppSidebarProps) {
 
   return (
     <Sidebar collapsible="icon" className="!absolute !inset-y-0 !h-full">
-      <SidebarContent>
-        <SidebarGroup>
-          <div className="-mx-2 -mt-2 h-10 border-b px-2">
-            <div className="flex h-full items-center justify-between">
-            <SidebarGroupLabel>Collections</SidebarGroupLabel>
-            <div className="-mr-1.5 flex items-center gap-0.5">
+      <SidebarContent className="gap-0">
+        <WorkspaceSwitcher current={workspace} onChanged={onWorkspaceChanged} />
+        <SidebarGroup className="p-0">
+          <div className="flex h-10 items-center border-b px-4">
+            <div className="flex h-full w-full items-center justify-between">
+            <SidebarGroupLabel className="h-auto px-0 py-0 leading-none">Collections</SidebarGroupLabel>
+            <div className="-mr-1 flex items-center gap-0.5">
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button className="size-8 rounded-sm [&>svg]:size-3.5" variant="ghost" size="icon" aria-label="New curl file" onClick={() => beginCreate('file')}><FilePlus2 /></Button>
+              <Button className="size-7 rounded-sm [&>svg]:size-3" variant="ghost" size="icon" aria-label="New curl file" onClick={() => beginCreate('file')}><FilePlus2 /></Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">New curl file</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button className="size-8 rounded-sm [&>svg]:size-3.5" variant="ghost" size="icon" aria-label="New folder" onClick={() => beginCreate('folder')}><FolderPlus /></Button>
+                <Button className="size-7 rounded-sm [&>svg]:size-3" variant="ghost" size="icon" aria-label="New folder" onClick={() => beginCreate('folder')}><FolderPlus /></Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">New folder</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    className="size-8 rounded-sm [&>svg]:size-3.5"
+                    className="size-7 rounded-sm [&>svg]:size-3"
                     variant="ghost"
                     size="icon"
                     aria-label={allFoldersExpanded ? 'Collapse all folders' : 'Expand all folders'}
@@ -298,25 +273,10 @@ export function AppSidebar({ onOpenFile }: AppSidebarProps) {
                 </TooltipTrigger>
                 <TooltipContent side="bottom">{allFoldersExpanded ? 'Collapse all folders' : 'Expand all folders'}</TooltipContent>
               </Tooltip>
-              <DropdownMenu>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuTrigger asChild>
-                      <Button className="size-8 rounded-sm [&>svg]:size-3.5" variant="ghost" size="icon" aria-label="Collection actions"><MoreHorizontal /></Button>
-                    </DropdownMenuTrigger>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Collection actions</TooltipContent>
-                </Tooltip>
-                <DropdownMenuContent side="right" align="start" className="w-48">
-                  <DropdownMenuItem onSelect={() => importInputRef.current?.click()}><Upload /> Import curl files</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => void exportWorkspace()}><Download /> Export collections</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
             </div>
             </div>
           </div>
-          <input ref={importInputRef} type="file" accept=".curl" multiple className="hidden" onChange={(event) => void importWorkspace(event)} />
-          <SidebarMenu>
+          <SidebarMenu className="px-2 pt-1">
             {folders.filter((folder) => parentPath(folder.path) === '.').map((folder) => renderFolder(folder))}
             {files.filter((file) => parentPath(file.path) === '.').map((file) => renderFile(file))}
           </SidebarMenu>

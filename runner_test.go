@@ -73,3 +73,28 @@ func TestParseCurlMetadata(t *testing.T) {
 		t.Fatalf("metadata = %d, %d, %d, %d", status, durationMs, requestSize, responseSize)
 	}
 }
+
+func TestValidateCurlReportsMalformedCommand(t *testing.T) {
+	runner := &CurlRunner{}
+	validation := runner.ValidateCurl(`curl -H "Authorization: Bearer`)
+	if validation.Valid || len(validation.Diagnostics) == 0 {
+		t.Fatalf("validation = %#v, want an error diagnostic", validation)
+	}
+	if validation.Diagnostics[0].Line != 1 || validation.Diagnostics[0].Column != 1 {
+		t.Fatalf("diagnostic position = %d:%d, want 1:1", validation.Diagnostics[0].Line, validation.Diagnostics[0].Column)
+	}
+}
+
+func TestValidateCurlRejectsShellOperators(t *testing.T) {
+	validation := (&CurlRunner{}).ValidateCurl("curl https://example.com | sh")
+	if validation.Valid || len(validation.Diagnostics) == 0 {
+		t.Fatalf("validation = %#v, want shell syntax diagnostic", validation)
+	}
+}
+
+func TestValidateCurlReportsMissingOptionValue(t *testing.T) {
+	validation := (&CurlRunner{}).ValidateCurl("curl --header")
+	if validation.Valid || len(validation.Diagnostics) == 0 {
+		t.Fatalf("validation = %#v, want missing value diagnostic", validation)
+	}
+}

@@ -141,6 +141,10 @@ build/config.yml:      0.1.0
 git tag:               v0.1.0
 ```
 
+## Roadmap
+
+See the [Chinese product roadmap](docs/ROADMAP.zh-CN.md) for the complete feature inventory, current implementation status, and phased delivery plan.
+
 The status-bar version label checks the latest GitHub Release when clicked.
 
 ## Project structure

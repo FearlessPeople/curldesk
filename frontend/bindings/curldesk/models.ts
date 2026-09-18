@@ -9,6 +9,11 @@ export interface WorkspaceEntry {
     "size": number;
 }
 
+export interface WorkspaceInfo {
+    "path": string;
+    "name": string;
+}
+
 export interface RunResult {
     "output": string;
     "exitCode": number;
@@ -17,4 +22,43 @@ export interface RunResult {
     "requestSize": number;
     "responseSize": number;
     "responseHeaders": string;
+}
+
+export interface CurlDiagnostic {
+    "line": number;
+    "column": number;
+    "message": string;
+    "severity": string;
+}
+
+export interface CurlValidation {
+    "valid": boolean;
+    "diagnostics": CurlDiagnostic[] | null;
+}
+
+export interface HistoryEntry {
+    "id": string;
+    "createdAt": string;
+    "filePath": string;
+    "environment": string;
+    "command": string;
+    "output": string;
+    "responseHeaders": string;
+    "exitCode": number;
+    "status": number;
+    "durationMs": number;
+}
+
+export interface DiagnosticInfo {
+    "os": string;
+    "architecture": string;
+    "curlPath": string;
+    "curlVersion": string;
+}
+
+export interface WorkspaceSearchResult {
+    "path": string;
+    "name": string;
+    "line": number;
+    "snippet": string;
 }

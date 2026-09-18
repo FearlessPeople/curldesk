@@ -1,8 +1,8 @@
-import { Check, Code2, Copy, Download, Github, LayoutPanelLeft, LayoutPanelTop, LoaderCircle, Monitor, Moon, Palette, RefreshCw, Settings2, SlidersHorizontal, Sun, X } from 'lucide-react'
+import { Check, ChevronsDownUp, Clock3, Code2, Copy, Download, FilePlus2, Github, LayoutPanelLeft, LayoutPanelTop, LoaderCircle, MoreHorizontal, Monitor, Moon, Palette, Pin, RefreshCw, Search, Settings2, SlidersHorizontal, Sun, X } from 'lucide-react'
 import { Browser } from '@wailsio/runtime'
 import { Events } from '@wailsio/runtime'
 import { Window } from '@wailsio/runtime'
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 
 import { AppSidebar } from '@/components/app-sidebar'
 import { Button } from '@/components/button'
@@ -10,6 +10,10 @@ import { Input } from '@/components/input'
 import { Alert } from '@/components/alert'
 import { CurlEditor } from '@/components/curl-editor'
 import { OutputEditor } from '@/components/output-editor'
+import { EnvironmentEditor } from '@/features/environment/environment-editor'
+import { HistoryDialog } from '@/features/history/history-dialog'
+import { DiagnosticsDialog } from '@/features/diagnostics/diagnostics-dialog'
+import { CommandPalette, type PaletteCommand } from '@/features/command-palette/command-palette'
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from '@/components/sidebar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/tabs'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/resizable'
@@ -19,16 +23,20 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Separator } from '@/components/separator'
 import { CurlRunner, WorkspaceService } from '../bindings/curldesk'
 import type { WorkspaceEntry } from '../bindings/curldesk'
+import type { DiagnosticInfo, HistoryEntry, WorkspaceInfo } from '../bindings/curldesk/models'
 
 type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
 const CURL_STREAM_EVENT = 'curldesk:curl:chunk'
 const SETTINGS_STORAGE_KEY = 'curldesk-settings'
+const RECENT_TABS_STORAGE_KEY = 'curldesk-recent-tabs'
 const RELEASES_URL = 'https://github.com/FearlessPeople/curldesk/releases/latest'
 
 type AppSettings = {
   autoSave: boolean
   editorFontSize: number
   wrapOutput: boolean
+  curlPath: string
+  requestTimeoutMs: number
   themeColor: ThemeColor
   appearance: Appearance
 }
@@ -39,7 +47,9 @@ type Environments = Record<string, Record<string, string>>
 type RequestResult = {
   output: string
   runInfo: { status: number; durationMs: number; requestSize: number; responseSize: number; headers: string } | null
-  runStatus: 'ready' | 'failed'
+  runStatus: 'ready' | 'running' | 'failed'
+  runID?: string
+  runningLine?: number | null
 }
 
 type ThemePalette = {
@@ -88,7 +98,7 @@ const themeColors: Record<ThemeColor, ThemeDefinition> = {
   },
 }
 
-const defaultSettings: AppSettings = { autoSave: true, editorFontSize: 14, wrapOutput: true, themeColor: 'blue', appearance: 'system' }
+const defaultSettings: AppSettings = { autoSave: true, editorFontSize: 14, wrapOutput: true, curlPath: '', requestTimeoutMs: 0, themeColor: 'blue', appearance: 'system' }
 
 function loadSettings(): AppSettings {
   try {
@@ -122,13 +132,26 @@ function extractRequestBlock(command: string, startLine: number) {
   return lines.slice(startIndex, endIndex === -1 ? lines.length : endIndex).join('\n').trim()
 }
 
-function formatOutput(output: string) {
+function formatOutput(output: string, pretty = true) {
   if (!output) return ''
+  if (!pretty) return output
   try {
     return JSON.stringify(JSON.parse(output), null, 2)
   } catch {
     return output
   }
+}
+
+function headerValue(headers: string, name: string) {
+  const line = headers.split(/\r?\n/).find((value) => value.toLowerCase().startsWith(`${name.toLowerCase()}:`))
+  return line ? line.slice(line.indexOf(':') + 1).trim() : ''
+}
+
+function isJsonResponse(output: string, headers: string) {
+  const contentType = headerValue(headers, 'content-type').toLowerCase()
+  if (contentType.includes('json') || contentType.includes('+json')) return true
+  const trimmed = output.trim()
+  return trimmed.startsWith('{') || trimmed.startsWith('[')
 }
 
 function formatBytes(bytes: number) {
@@ -155,10 +178,6 @@ function isNewerVersion(latest: string, current: string) {
   return false
 }
 
-function resolveEnvironment(command: string, variables: Record<string, string>) {
-  return command.replace(/\{\{\s*([A-Za-z_][\w-]*)\s*\}\}/g, (match, key: string) => variables[key] ?? match)
-}
-
 export default function App() {
   const [layout, setLayout] = useState<'vertical' | 'horizontal'>('vertical')
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -170,26 +189,39 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(loadSettings)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [environments, setEnvironments] = useState<Environments>({ Dev: {} })
+  const [workspace, setWorkspace] = useState<WorkspaceInfo>({ path: '', name: 'My Workspace' })
   const [activeEnvironment, setActiveEnvironment] = useState('Dev')
   const theme = themeColors[settings.themeColor]
   const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
   const isDark = settings.appearance === 'dark' || (settings.appearance === 'system' && systemDark)
   const palette = theme[isDark ? 'dark' : 'light']
-  const [requests, setRequests] = useState<{ value: string; label: string; command: string }[]>([])
+  const [requests, setRequests] = useState<{ value: string; label: string; command: string; dirty?: boolean; pinned?: boolean }[]>([])
   const [activeRequest, setActiveRequest] = useState('')
-  const [runOutput, setRunOutput] = useState('')
-  const [runStatus, setRunStatus] = useState<'ready' | 'running' | 'failed'>('ready')
-  const [runningLine, setRunningLine] = useState<number | null>(null)
   const [copiedOutput, setCopiedOutput] = useState(false)
   const [outputView, setOutputView] = useState<'response' | 'headers'>('response')
-  const [runInfo, setRunInfo] = useState<{ status: number; durationMs: number; requestSize: number; responseSize: number; headers: string } | null>(null)
+  const [responseFormat, setResponseFormat] = useState<'pretty' | 'raw'>('pretty')
+  const [outputSearch, setOutputSearch] = useState('')
+  const [collapseOutputSignal, setCollapseOutputSignal] = useState(0)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([])
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
+  const [diagnostics, setDiagnostics] = useState<DiagnosticInfo | null>(null)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [requestResults, setRequestResults] = useState<Record<string, RequestResult>>({})
   const [errorMessage, setErrorMessage] = useState('')
-  const runId = useRef(0)
-  const activeStreamId = useRef('')
+  const activeStreams = useRef<Record<string, string>>({})
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const displayOutput = formatOutput(runOutput || 'Run a curl command to see output here.')
+  const restoredTabs = useRef(false)
+  const activeResult = requestResults[activeRequest]
+  const runOutput = activeResult?.output || ''
+  const runInfo = activeResult?.runInfo || null
+  const runStatus = activeResult?.runStatus || 'ready'
+  const runningLine = activeResult?.runningLine ?? null
+  const displayOutput = outputView === 'response'
+    ? formatOutput(runOutput || 'Run a curl command to see output here.', responseFormat === 'pretty' && isJsonResponse(runOutput, runInfo?.headers || ''))
+    : (runInfo?.headers || 'No response headers yet.')
+  const responseContentType = headerValue(runInfo?.headers || '', 'content-type') || (runOutput ? 'text/plain' : '—')
 
   const copyOutput = async () => {
     if (!runOutput) return
@@ -229,9 +261,33 @@ export default function App() {
   }
 
   useEffect(() => {
+    void WorkspaceService.CurrentWorkspace().then(setWorkspace).catch((error) => console.error('Unable to load current workspace', error))
     void syncOpenRequests().finally(() => setBooting(false))
     const unsubscribe = Events.On('curldesk:collections-changed', () => { void syncOpenRequests() })
-    return unsubscribe
+    const unsubscribeWorkspace = Events.On('curldesk:workspace-changed', () => {
+      setRequests([])
+      setRequestResults({})
+      setActiveRequest('')
+      void WorkspaceService.CurrentWorkspace().then(setWorkspace)
+      void WorkspaceService.ListEnvironments().then((loaded) => {
+        const next = loaded && Object.keys(loaded).length > 0 ? loaded : { Dev: {} }
+        setEnvironments(next)
+        setActiveEnvironment(Object.keys(next)[0] || 'Dev')
+      })
+      void syncOpenRequests()
+    })
+    return () => { unsubscribe(); unsubscribeWorkspace() }
+  }, [])
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setCommandPaletteOpen(true)
+      }
+    }
+    window.addEventListener('keydown', handleShortcut)
+    return () => window.removeEventListener('keydown', handleShortcut)
   }, [])
 
   useEffect(() => {
@@ -250,6 +306,8 @@ export default function App() {
           ...(stored.autoSave !== undefined ? { autoSave: stored.autoSave === 'true' } : {}),
           ...(stored.editorFontSize ? { editorFontSize: Number(stored.editorFontSize) || current.editorFontSize } : {}),
           ...(stored.wrapOutput !== undefined ? { wrapOutput: stored.wrapOutput === 'true' } : {}),
+          ...(stored.curlPath !== undefined ? { curlPath: stored.curlPath } : {}),
+          ...(stored.requestTimeoutMs !== undefined ? { requestTimeoutMs: Math.max(0, Number(stored.requestTimeoutMs) || 0) } : {}),
           ...(stored.themeColor && stored.themeColor in themeColors ? { themeColor: stored.themeColor as ThemeColor } : {}),
           ...(stored.appearance && ['light', 'dark', 'system'].includes(stored.appearance) ? { appearance: stored.appearance as Appearance } : {}),
         }))
@@ -262,14 +320,6 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    const result = requestResults[activeRequest]
-    setRunOutput(result?.output || '')
-    setRunInfo(result?.runInfo || null)
-    setRunStatus(result?.runStatus || 'ready')
-    setOutputView('response')
-  }, [activeRequest, requestResults])
-
-  useEffect(() => {
     if (!errorMessage) return
     const timer = window.setTimeout(() => setErrorMessage(''), 5000)
     return () => window.clearTimeout(timer)
@@ -277,8 +327,14 @@ export default function App() {
 
   useEffect(() => Events.On(CURL_STREAM_EVENT, (event) => {
     const data = event.data as { runId?: string; chunk?: string } | undefined
-    if (!data || data.runId !== activeStreamId.current || !data.chunk) return
-    setRunOutput((current) => current + data.chunk)
+    if (!data?.runId || !data.chunk) return
+    const filePath = activeStreams.current[data.runId]
+    if (!filePath) return
+    setRequestResults((current) => {
+      const result = current[filePath]
+      if (!result || result.runID !== data.runId) return current
+      return { ...current, [filePath]: { ...result, output: result.output + data.chunk } }
+    })
   }), [])
 
   useEffect(() => () => {
@@ -293,9 +349,19 @@ export default function App() {
       autoSave: String(settings.autoSave),
       editorFontSize: String(settings.editorFontSize),
       wrapOutput: String(settings.wrapOutput),
+      curlPath: settings.curlPath,
+      requestTimeoutMs: String(settings.requestTimeoutMs),
       themeColor: settings.themeColor,
       appearance: settings.appearance,
     }).catch((error) => console.error('Unable to save settings', error))
+    void CurlRunner.SetCurlPath(settings.curlPath).catch((error) => {
+      console.error('Unable to configure curl executable', error)
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to configure curl executable.')
+    })
+    void CurlRunner.SetTimeout(settings.requestTimeoutMs).catch((error) => {
+      console.error('Unable to configure curl timeout', error)
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to configure curl timeout.')
+    })
   }, [settings, settingsLoaded])
 
   useEffect(() => {
@@ -315,7 +381,7 @@ export default function App() {
       const command = await WorkspaceService.ReadFile(entry.path)
       setRequests((current) => current.some((request) => request.value === entry.path)
         ? current.map((request) => request.value === entry.path ? { ...request, command } : request)
-        : [...current, { value: entry.path, label: entry.name, command }])
+        : [...current, { value: entry.path, label: entry.name, command, dirty: false, pinned: false }])
       setActiveRequest(entry.path)
     } catch (error) {
       console.error('Unable to open curl file', error)
@@ -323,8 +389,56 @@ export default function App() {
     }
   }
 
+  const createNewCurl = async () => {
+    try {
+      const created = await WorkspaceService.CreateFile('', `request-${Date.now()}`)
+      await Events.Emit('curldesk:collections-changed')
+      await openFile(created)
+    } catch (error) {
+      console.error('Unable to create curl file', error)
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to create curl file.')
+    }
+  }
+
+  useEffect(() => {
+    if (booting || restoredTabs.current) return
+    let saved: { active?: string; tabs?: { path: string; pinned?: boolean }[] } = {}
+    try { saved = JSON.parse(localStorage.getItem(RECENT_TABS_STORAGE_KEY) || '{}') } catch { saved = {} }
+    const tabs = saved.tabs ?? []
+    if (tabs.length === 0) {
+      restoredTabs.current = true
+      return
+    }
+    void Promise.all(tabs.map(async (tab) => {
+      try {
+        const command = await WorkspaceService.ReadFile(tab.path)
+        return { value: tab.path, label: tab.path.split('/').pop() || tab.path, command, dirty: false, pinned: Boolean(tab.pinned) }
+      } catch {
+        return null
+      }
+    })).then((loaded) => {
+      const restored = loaded.filter((request): request is NonNullable<typeof request> => request !== null)
+      setRequests(restored)
+      setActiveRequest(restored.some((request) => request.value === saved.active) ? saved.active || '' : restored[0]?.value || '')
+      restoredTabs.current = true
+    })
+  }, [booting])
+
+  useEffect(() => {
+    if (booting || !restoredTabs.current) return
+    localStorage.setItem(RECENT_TABS_STORAGE_KEY, JSON.stringify({
+      active: activeRequest,
+      tabs: requests.map((request) => ({ path: request.value, pinned: request.pinned })),
+    }))
+  }, [activeRequest, booting, requests])
+
   const closeRequest = (value: string) => {
     if (requests.length === 1) return
+    const runningID = requestResults[value]?.runID
+    if (requestResults[value]?.runStatus === 'running' && runningID) {
+      delete activeStreams.current[runningID]
+      void CurlRunner.StopCurlByID(runningID)
+    }
     const index = requests.findIndex((request) => request.value === value)
     const nextRequests = requests.filter((request) => request.value !== value)
     setRequests(nextRequests)
@@ -333,14 +447,39 @@ export default function App() {
     }
   }
 
+  const togglePinRequest = (value: string) => {
+    setRequests((current) => current.map((request) => request.value === value ? { ...request, pinned: !request.pinned } : request))
+  }
+
+  const closeOtherRequests = (value: string) => {
+    requests.filter((request) => request.value !== value && !request.pinned).forEach((request) => {
+      const runningID = requestResults[request.value]?.runID
+      if (runningID) {
+        delete activeStreams.current[runningID]
+        void CurlRunner.StopCurlByID(runningID)
+      }
+    })
+    setRequests((current) => current.filter((request) => request.value === value || request.pinned))
+    setActiveRequest(value)
+  }
+
+  const closeAllRequests = () => {
+    void CurlRunner.StopCurl()
+    activeStreams.current = {}
+    setRequests([])
+    setActiveRequest('')
+    setRequestResults({})
+  }
+
   const updateCommand = (value: string, command: string) => {
-    setRequests((current) => current.map((request) => request.value === value ? { ...request, command } : request))
+    setRequests((current) => current.map((request) => request.value === value ? { ...request, command, dirty: true } : request))
     if (!/\.curl$/i.test(value)) return
     clearTimeout(saveTimers.current[value])
     if (!settings.autoSave) return
     saveTimers.current[value] = setTimeout(async () => {
       try {
         await WorkspaceService.SaveFile(value, command)
+        setRequests((current) => current.map((request) => request.value === value ? { ...request, dirty: false } : request))
         await Events.Emit('curldesk:collections-changed')
       } catch (error) {
         console.error('Unable to save curl file', error)
@@ -357,21 +496,79 @@ export default function App() {
     })
   }
 
+  const loadDotEnv = async () => {
+    try {
+      const dotenv = await WorkspaceService.LoadDotEnv()
+      saveEnvironments({ ...environments, [activeEnvironment]: dotenv })
+    } catch (error) {
+      console.error('Unable to load .env', error)
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to load .env.')
+    }
+  }
+
+  const saveDotEnv = async () => {
+    try {
+      await WorkspaceService.SaveDotEnv(environments[activeEnvironment] || {})
+    } catch (error) {
+      console.error('Unable to save .env', error)
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to save .env.')
+    }
+  }
+
+  const searchHistory = useCallback(async (query: string) => {
+    try {
+      setHistoryEntries((await WorkspaceService.ListHistory(query)) ?? [])
+    } catch (error) {
+      console.error('Unable to load history', error)
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to load request history.')
+    }
+  }, [])
+
+  const clearHistory = useCallback(async () => {
+    try {
+      await WorkspaceService.ClearHistory()
+      setHistoryEntries([])
+    } catch (error) {
+      console.error('Unable to clear history', error)
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to clear request history.')
+    }
+  }, [])
+
+  const refreshDiagnostics = useCallback(async () => {
+    try {
+      setDiagnostics(await CurlRunner.GetDiagnostics())
+    } catch (error) {
+      console.error('Unable to load diagnostics', error)
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to load diagnostics.')
+    }
+  }, [])
+
   const runRequestBlock = async (command: string, startLine: number) => {
     if (!activeRequest || runStatus === 'running') return
-    const requestBlock = extractRequestBlock(resolveEnvironment(command, environments[activeEnvironment] || {}), startLine)
+    const filePath = activeRequest
+    const environmentName = activeEnvironment
+    const requestBlock = extractRequestBlock(command, startLine)
     if (!requestBlock) return
-    const currentRunId = ++runId.current
-    const streamId = `${Date.now()}-${currentRunId}`
-    activeStreamId.current = streamId
-    setRunOutput('')
-    setRunInfo(null)
+    const streamId = `${Date.now()}-${Math.random().toString(36).slice(2)}`
+    activeStreams.current[streamId] = filePath
+    setRequestResults((current) => ({
+      ...current,
+      [filePath]: { output: '', runInfo: null, runStatus: 'running', runID: streamId, runningLine: startLine },
+    }))
     setOutputView('response')
-    setRunStatus('running')
-    setRunningLine(startLine)
+    setResponseFormat('pretty')
+    setOutputSearch('')
     try {
-      const result = await CurlRunner.RunCurlStream(requestBlock, streamId)
-      if (runId.current !== currentRunId) return
+      const missing = await WorkspaceService.ValidateEnvironment(requestBlock, activeEnvironment)
+      if (missing && missing.length > 0) throw new Error(`Missing environment variables: ${missing.join(', ')}`)
+      const resolvedRequestBlock = await WorkspaceService.ResolveEnvironment(requestBlock, activeEnvironment)
+      const validation = await CurlRunner.ValidateCurl(resolvedRequestBlock)
+      if (!validation.valid) {
+        const diagnostic = validation.diagnostics?.[0]
+        throw new Error(diagnostic ? `${diagnostic.message} (${diagnostic.line}:${diagnostic.column})` : 'Invalid curl command.')
+      }
+      const result = await CurlRunner.RunCurlStream(resolvedRequestBlock, streamId)
+      delete activeStreams.current[streamId]
       const nextOutput = result.output || `Process exited with code ${result.exitCode}.`
       const nextInfo = {
         status: result.status,
@@ -380,32 +577,34 @@ export default function App() {
         responseSize: result.responseSize,
         headers: result.responseHeaders,
       }
-      setRunOutput(nextOutput)
-      setRunInfo(nextInfo)
-      setRunStatus(result.exitCode === 0 ? 'ready' : 'failed')
-      setRequestResults((current) => ({ ...current, [activeRequest]: { output: nextOutput, runInfo: nextInfo, runStatus: result.exitCode === 0 ? 'ready' : 'failed' } }))
-      setRunningLine(null)
+      setRequestResults((current) => {
+        const existing = current[filePath]
+        if (!existing || existing.runID !== streamId) return current
+        return { ...current, [filePath]: { output: nextOutput, runInfo: nextInfo, runStatus: result.exitCode === 0 ? 'ready' : 'failed', runID: streamId, runningLine: null } }
+      })
+      void WorkspaceService.RecordHistory(filePath, environmentName, requestBlock, nextOutput, nextInfo.headers, result.exitCode, nextInfo.status, nextInfo.durationMs).catch((error) => {
+        console.error('Unable to record request history', error)
+      })
     } catch (error) {
-      if (runId.current !== currentRunId) return
+      delete activeStreams.current[streamId]
       console.error('Unable to run curl command', error)
-      setRunOutput(error instanceof Error ? error.message : 'Unable to run curl command.')
-      setRunStatus('failed')
+      const message = error instanceof Error ? error.message : 'Unable to run curl command.'
+      setRequestResults((current) => {
+        const existing = current[filePath]
+        if (!existing || existing.runID !== streamId) return current
+        return { ...current, [filePath]: { output: message, runInfo: null, runStatus: 'failed', runID: streamId, runningLine: null } }
+      })
       setErrorMessage(error instanceof Error ? error.message : 'Unable to run curl command.')
-      setRunningLine(null)
     }
   }
 
   const stopRequest = async () => {
     if (runStatus !== 'running') return
-    runId.current += 1
-    activeStreamId.current = ''
-    setRunningLine(null)
-    setRunStatus('ready')
-    setRunOutput('Request stopped.')
-    setRunInfo(null)
-    setRequestResults((current) => ({ ...current, [activeRequest]: { output: 'Request stopped.', runInfo: null, runStatus: 'ready' } }))
+    const streamId = activeResult?.runID || ''
+    if (streamId) delete activeStreams.current[streamId]
+    setRequestResults((current) => ({ ...current, [activeRequest]: { output: 'Request stopped.', runInfo: null, runStatus: 'ready', runningLine: null } }))
     try {
-      await CurlRunner.StopCurl()
+      await CurlRunner.StopCurlByID(streamId)
     } catch (error) {
       console.error('Unable to stop curl command', error)
     }
@@ -431,6 +630,24 @@ export default function App() {
       setUpdateState('error')
     }
   }
+
+  const paletteCommands = useMemo<PaletteCommand[]>(() => {
+    const active = requests.find((request) => request.value === activeRequest)
+    return [
+      { id: 'run', label: 'Run current request', description: 'Execute the active curl request', shortcut: '⌘ Enter', onSelect: () => active && void runRequestBlock(active.command, 1) },
+      { id: 'new-curl', label: 'Create new curl file', description: 'Start a new request in the workspace', onSelect: () => void createNewCurl() },
+      { id: 'save', label: 'Save current request', description: 'Write the active curl file to the workspace', onSelect: () => {
+        if (!active) return
+        void WorkspaceService.SaveFile(active.value, active.command).then(() => setRequests((current) => current.map((request) => request.value === active.value ? { ...request, dirty: false } : request)))
+      } },
+      { id: 'history', label: 'Open request history', description: 'Search previous local curl runs', onSelect: () => setHistoryOpen(true) },
+      { id: 'diagnostics', label: 'Open diagnostics', description: 'Inspect curl and platform information', onSelect: () => setDiagnosticsOpen(true) },
+      { id: 'environment', label: 'Switch environment', description: 'Open environment settings', onSelect: () => { setSettingsSection('environment'); setSettingsOpen(true) } },
+      { id: 'close-tab', label: 'Close current tab', description: 'Close the active request tab', onSelect: () => activeRequest && closeRequest(activeRequest) },
+      { id: 'close-others', label: 'Close other tabs', description: 'Keep the active tab and pinned tabs', onSelect: () => activeRequest && closeOtherRequests(activeRequest) },
+      { id: 'close-all', label: 'Close all tabs', description: 'Stop running requests and close every tab', onSelect: closeAllRequests },
+    ]
+  }, [activeRequest, requests, runRequestBlock])
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -471,7 +688,7 @@ export default function App() {
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <SidebarProvider className="!min-h-0 h-full">
-          <AppSidebar onOpenFile={openFile} />
+          <AppSidebar onOpenFile={openFile} workspace={workspace} onWorkspaceChanged={setWorkspace} />
           <SidebarInset>
             <Tabs value={activeRequest} onValueChange={setActiveRequest} className="flex min-h-0 flex-1 flex-col">
             <div className="relative flex h-10 shrink-0 items-center gap-2 border-b px-3">
@@ -482,7 +699,8 @@ export default function App() {
                   return (
                     <TabsTrigger key={request.value} value={request.value} className="group gap-1 px-2 data-[state=active]:ring-1 data-[state=active]:ring-primary/25">
                       <span className={`font-mono text-[10px] font-semibold ${methodColor(method)}`}>{method}</span>
-                      <span>{request.label.replace(/\.curl$/i, '')}</span>
+                      <span>{request.dirty ? `${request.label.replace(/\.curl$/i, '')} ·` : request.label.replace(/\.curl$/i, '')}</span>
+                      {request.pinned && <Pin className="size-3 text-primary" />}
                       <span
                         role="button"
                         tabIndex={0}
@@ -503,11 +721,32 @@ export default function App() {
                   )
                 })}
               </TabsList>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="absolute right-2 size-7" aria-label="Tab actions"><MoreHorizontal className="size-4" /></Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  {activeRequest && <DropdownMenuItem onSelect={() => togglePinRequest(activeRequest)}><Pin className="size-3.5" /> {requests.find((request) => request.value === activeRequest)?.pinned ? 'Unpin tab' : 'Pin tab'}</DropdownMenuItem>}
+                  <DropdownMenuItem onSelect={() => activeRequest && closeOtherRequests(activeRequest)} disabled={!activeRequest || requests.length < 2}>Close others</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={closeAllRequests} disabled={requests.length === 0}>Close all</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             {requests.length === 0 && (
-              <div className="flex min-h-0 flex-1 items-center justify-center text-sm text-muted-foreground">
-                Open a curl file from Collections to start.
+              <div className="flex min-h-0 flex-1 items-center justify-center px-6">
+                <div className="w-full max-w-md rounded-lg border bg-muted/20 px-8 py-9 text-center shadow-sm">
+                  <div className="mx-auto flex size-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Code2 className="size-5" />
+                  </div>
+                  <h2 className="mt-4 text-base font-semibold text-foreground">Start with a curl request</h2>
+                  <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-muted-foreground">Open a .curl file from Collections, or create a new request to begin working.</p>
+                  <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                    <Button size="sm" onClick={() => void createNewCurl()}><FilePlus2 className="size-4" />New curl file</Button>
+                    <Button variant="outline" size="sm" onClick={() => setCommandPaletteOpen(true)}>Open commands <kbd className="ml-1 text-[10px] text-muted-foreground">⌘K</kbd></Button>
+                    <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}><Clock3 className="size-4" />History</Button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -530,7 +769,7 @@ export default function App() {
                   <ResizablePanel defaultSize="32%" minSize="18%" className="resizable-panel min-w-0 overflow-hidden">
                     <section className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
                       <div className="relative flex h-10 min-w-0 shrink-0 items-center border-t px-4">
-                        <div className="flex min-w-0 shrink-0 items-center gap-3">
+                          <div className="flex min-w-0 shrink-0 items-center gap-3">
                           <div className="text-sm font-medium">Output</div>
                           <div className="flex items-center gap-1">
                             <Tooltip>
@@ -560,8 +799,31 @@ export default function App() {
                               <TooltipContent side="top">View response headers</TooltipContent>
                             </Tooltip>
                           </div>
+                          {outputView === 'response' && isJsonResponse(runOutput, runInfo?.headers || '') && (
+                            <div className="flex items-center gap-1">
+                              {(['pretty', 'raw'] as const).map((format) => (
+                                <Button key={format} variant={responseFormat === format ? 'secondary' : 'ghost'} size="sm" className="h-7 px-2 text-xs" onClick={() => setResponseFormat(format)}>
+                                  {format === 'pretty' ? 'Pretty' : 'Raw'}
+                                </Button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div className="absolute right-6 top-1/2 z-10 flex min-w-0 -translate-y-1/2 items-center gap-2 pl-2">
+                          <div className="relative hidden w-32 sm:block">
+                            <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                            <Input value={outputSearch} onChange={(event) => setOutputSearch(event.target.value)} placeholder="Search" aria-label="Search response output" className="h-7 pl-7 text-xs" />
+                          </div>
+                          {outputView === 'response' && responseFormat === 'pretty' && isJsonResponse(runOutput, runInfo?.headers || '') && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 rounded-md" aria-label="Collapse JSON" onClick={() => setCollapseOutputSignal((current) => current + 1)}>
+                                  <ChevronsDownUp />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">Collapse JSON</TooltipContent>
+                            </Tooltip>
+                          )}
                           {runInfo && (
                             <div className="mr-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-[10px] text-muted-foreground sm:gap-2 sm:text-[11px]">
                               <span
@@ -573,6 +835,7 @@ export default function App() {
                               <span title="Request duration" className="shrink-0">{runInfo.durationMs} ms</span>
                               <span title="Request size" className="shrink-0">↑ {formatBytes(runInfo.requestSize)}</span>
                               <span title="Response size" className="shrink-0">↓ {formatBytes(runInfo.responseSize)}</span>
+                              <span title="Response content type" className="hidden max-w-36 truncate sm:inline">{responseContentType}</span>
                             </div>
                           )}
                           <Tooltip>
@@ -642,10 +905,12 @@ export default function App() {
                           key={outputView}
                           value={outputView === 'response'
                             ? (runStatus === 'running' && !runOutput ? '' : displayOutput)
-                            : formatOutput(runInfo?.headers || 'No response headers yet.')}
+                            : displayOutput}
                           mode={outputView}
                           fontSize={settings.editorFontSize}
                           wrap={settings.wrapOutput}
+                          searchTerm={outputSearch}
+                          collapseSignal={collapseOutputSignal}
                           loading={runStatus === 'running' && outputView === 'response' && !runOutput}
                         />
                       </div>
@@ -740,6 +1005,32 @@ export default function App() {
                       {theme.label}
                     </div>
                   </div>
+                  <div className="space-y-2 rounded-md border p-4">
+                    <div>
+                      <span className="block text-sm font-medium">curl executable</span>
+                      <span className="mt-1 block text-xs text-muted-foreground">Leave empty to use curl from the system PATH.</span>
+                    </div>
+                    <Input
+                      value={settings.curlPath}
+                      placeholder="curl"
+                      aria-label="curl executable path"
+                      onChange={(event) => setSettings((current) => ({ ...current, curlPath: event.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2 rounded-md border p-4">
+                    <div>
+                      <span className="block text-sm font-medium">Request timeout</span>
+                      <span className="mt-1 block text-xs text-muted-foreground">Set milliseconds, or 0 for no application timeout.</span>
+                    </div>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={1000}
+                      value={settings.requestTimeoutMs}
+                      aria-label="Request timeout in milliseconds"
+                      onChange={(event) => setSettings((current) => ({ ...current, requestTimeoutMs: Math.max(0, Number(event.target.value) || 0) }))}
+                    />
+                  </div>
                 </div>
               )}
               {settingsSection === 'editor' && (
@@ -786,37 +1077,14 @@ export default function App() {
                 </div>
               )}
               {settingsSection === 'environment' && (
-                <div className="space-y-5">
-                  <div>
-                    <h3 className="text-base font-semibold">Environment</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">Manage variables used by curl files. Reference them with {'{{variable}}'}.</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {Object.keys(environments).map((name) => (
-                      <Button key={name} variant={activeEnvironment === name ? 'secondary' : 'outline'} size="sm" onClick={() => setActiveEnvironment(name)}>
-                        {name}
-                      </Button>
-                    ))}
-                    <Button variant="outline" size="sm" onClick={() => saveEnvironments({ ...environments, [`Environment-${Object.keys(environments).length + 1}`]: {} })}>Add environment</Button>
-                  </div>
-                  <div className="space-y-2 rounded-md border p-4">
-                    {Object.entries(environments[activeEnvironment] || {}).map(([key, value]) => (
-                      <div key={key} className="flex items-center gap-2">
-                        <Input value={key} readOnly className="h-8 w-40 font-mono text-xs" aria-label={`Variable name ${key}`} />
-                        <Input value={value} className="h-8 flex-1 font-mono text-xs" aria-label={`Value for ${key}`} onChange={(event) => saveEnvironments({ ...environments, [activeEnvironment]: { ...environments[activeEnvironment], [key]: event.target.value } })} />
-                        <Button variant="ghost" size="icon" className="size-8" aria-label={`Remove ${key}`} onClick={() => {
-                          const next = { ...environments[activeEnvironment] }
-                          delete next[key]
-                          saveEnvironments({ ...environments, [activeEnvironment]: next })
-                        }}><X className="size-4" /></Button>
-                      </div>
-                    ))}
-                    <Button variant="outline" size="sm" onClick={() => {
-                      const key = `VARIABLE_${Object.keys(environments[activeEnvironment] || {}).length + 1}`
-                      saveEnvironments({ ...environments, [activeEnvironment]: { ...environments[activeEnvironment], [key]: '' } })
-                    }}>Add variable</Button>
-                  </div>
-                </div>
+                <EnvironmentEditor
+                  environments={environments}
+                  activeEnvironment={activeEnvironment}
+                  onSelectEnvironment={setActiveEnvironment}
+                  onChange={saveEnvironments}
+                  onLoadDotEnv={() => void loadDotEnv()}
+                  onSaveDotEnv={() => void saveDotEnv()}
+                />
               )}
               </section>
             </main>
@@ -857,15 +1125,22 @@ export default function App() {
         </DialogContent>
       </Dialog>
 
+      <HistoryDialog open={historyOpen} entries={historyEntries} onOpenChange={setHistoryOpen} onSearch={searchHistory} onClear={() => void clearHistory()} />
+      <DiagnosticsDialog open={diagnosticsOpen} info={diagnostics} onOpenChange={setDiagnosticsOpen} onRefresh={refreshDiagnostics} />
+      <CommandPalette open={commandPaletteOpen} commands={paletteCommands} onOpenChange={setCommandPaletteOpen} />
+
         <footer className="flex h-8 shrink-0 items-center gap-3 border-t px-4 text-xs text-muted-foreground">
-        <span>Workspace ready</span>
-        <Separator orientation="vertical" className="h-3" />
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground">
-              Environment: {activeEnvironment}
-            </Button>
-          </DropdownMenuTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground" aria-label={`Switch environment, current ${activeEnvironment}`}>
+                  Environment: {activeEnvironment}
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="top">Switch environment</TooltipContent>
+          </Tooltip>
           <DropdownMenuContent side="top" align="start" className="w-40">
             {Object.keys(environments).map((name) => (
               <DropdownMenuItem key={name} onSelect={() => setActiveEnvironment(name)}>
@@ -877,6 +1152,27 @@ export default function App() {
             <DropdownMenuItem onSelect={() => { setSettingsSection('environment'); setSettingsOpen(true) }}>Manage environments</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Separator orientation="vertical" className="h-3" />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground" aria-label="Request history" onClick={() => setHistoryOpen(true)}>History</Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Request history</TooltipContent>
+        </Tooltip>
+        <Separator orientation="vertical" className="h-3" />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground" aria-label="Open command palette" onClick={() => setCommandPaletteOpen(true)}>Commands</Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Command palette (⌘K / Ctrl+K)</TooltipContent>
+        </Tooltip>
+        <Separator orientation="vertical" className="h-3" />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground" aria-label="Open diagnostics" onClick={() => setDiagnosticsOpen(true)}>Diagnostics</Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Open diagnostics</TooltipContent>
+        </Tooltip>
         <Separator orientation="vertical" className="h-3" />
         <Tooltip>
           <TooltipTrigger asChild>
@@ -894,12 +1190,17 @@ export default function App() {
         </Tooltip>
         <Separator orientation="vertical" className="h-3" />
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-6 gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground">
-              <Palette className="size-3.5" />
-              <span>Theme: {theme.label}</span>
-            </Button>
-          </DropdownMenuTrigger>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-6 gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground" aria-label={`Theme, current ${theme.label}`}>
+                  <Palette className="size-3.5" />
+                  <span>Theme: {theme.label}</span>
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="top">Change theme</TooltipContent>
+          </Tooltip>
           <DropdownMenuContent side="top" align="start" className="w-36">
             <DropdownMenuItem onSelect={() => setSettings((current) => ({ ...current, appearance: 'light' }))} className="gap-2">
               <Sun className="size-3.5" />
@@ -947,18 +1248,22 @@ export default function App() {
           <TooltipContent side="top">Settings</TooltipContent>
         </Tooltip>
         <Separator orientation="vertical" className="h-3" />
-        <a
-          href="https://github.com/FearlessPeople/curldesk"
-          onClick={(event) => {
-            event.preventDefault()
-            void Browser.OpenURL('https://github.com/FearlessPeople/curldesk')
-          }}
-          className="flex items-center gap-1 hover:text-foreground"
-        >
-          <Github className="size-3.5" /> GitHub
-        </a>
-        <Separator orientation="vertical" className="h-3" />
-        <span className="ml-auto">UTF-8</span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <a
+              href="https://github.com/FearlessPeople/curldesk"
+              aria-label="Open CurlDesk on GitHub"
+              onClick={(event) => {
+                event.preventDefault()
+                void Browser.OpenURL('https://github.com/FearlessPeople/curldesk')
+              }}
+              className="flex items-center gap-1 hover:text-foreground"
+            >
+              <Github className="size-3.5" /> GitHub
+            </a>
+          </TooltipTrigger>
+          <TooltipContent side="top">Open CurlDesk on GitHub</TooltipContent>
+        </Tooltip>
         </footer>
         {booting && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background text-foreground">

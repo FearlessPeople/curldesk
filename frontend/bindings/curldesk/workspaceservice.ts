@@ -52,3 +52,55 @@ export function SaveEnvironments(environments: Record<string, Record<string, str
 export function SaveSettings(settings: Record<string, string>): $CancellablePromise<void> {
     return $Call.ByName("main.WorkspaceService.SaveSettings", settings);
 }
+
+export function ResolveEnvironment(command: string, environment: string): $CancellablePromise<string> {
+    return $Call.ByName("main.WorkspaceService.ResolveEnvironment", command, environment);
+}
+
+export function ValidateEnvironment(command: string, environment: string): $CancellablePromise<string[] | null> {
+    return $Call.ByName("main.WorkspaceService.ValidateEnvironment", command, environment);
+}
+
+export function LoadDotEnv(): $CancellablePromise<Record<string, string>> {
+    return $Call.ByName("main.WorkspaceService.LoadDotEnv");
+}
+
+export function SaveDotEnv(values: Record<string, string>): $CancellablePromise<void> {
+    return $Call.ByName("main.WorkspaceService.SaveDotEnv", values);
+}
+
+export function RecordHistory(filePath: string, environment: string, command: string, output: string, responseHeaders: string, exitCode: number, status: number, durationMs: number): $CancellablePromise<void> {
+    return $Call.ByName("main.WorkspaceService.RecordHistory", filePath, environment, command, output, responseHeaders, exitCode, status, durationMs);
+}
+
+export function ListHistory(query: string): $CancellablePromise<$models.HistoryEntry[] | null> {
+    return $Call.ByName("main.WorkspaceService.ListHistory", query);
+}
+
+export function ClearHistory(): $CancellablePromise<void> {
+    return $Call.ByName("main.WorkspaceService.ClearHistory");
+}
+
+export function SearchWorkspace(query: string): $CancellablePromise<$models.WorkspaceSearchResult[] | null> {
+    return $Call.ByName("main.WorkspaceService.SearchWorkspace", query);
+}
+
+export function CurrentWorkspace(): $CancellablePromise<$models.WorkspaceInfo> {
+    return $Call.ByName("main.WorkspaceService.CurrentWorkspace");
+}
+
+export function ListRecentWorkspaces(): $CancellablePromise<$models.WorkspaceInfo[] | null> {
+    return $Call.ByName("main.WorkspaceService.ListRecentWorkspaces");
+}
+
+export function CreateWorkspace(path: string): $CancellablePromise<$models.WorkspaceInfo> {
+    return $Call.ByName("main.WorkspaceService.CreateWorkspace", path);
+}
+
+export function OpenWorkspace(path: string): $CancellablePromise<$models.WorkspaceInfo> {
+    return $Call.ByName("main.WorkspaceService.OpenWorkspace", path);
+}
+
+export function ImportWorkspace(path: string): $CancellablePromise<void> {
+    return $Call.ByName("main.WorkspaceService.ImportWorkspace", path);
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -30,12 +32,31 @@ type RunResult struct {
 	ResponseHeaders string `json:"responseHeaders"`
 }
 
+type CurlDiagnostic struct {
+	Line     int    `json:"line"`
+	Column   int    `json:"column"`
+	Message  string `json:"message"`
+	Severity string `json:"severity"`
+}
+
+type CurlValidation struct {
+	Valid       bool             `json:"valid"`
+	Diagnostics []CurlDiagnostic `json:"diagnostics"`
+}
+
 type CurlRunner struct {
-	mu      sync.Mutex
-	process *exec.Cmd
+	mu         sync.Mutex
+	processes  map[string]*exec.Cmd
+	lastRunID  string
+	executable string
+	timeout    time.Duration
 }
 
 func (r *CurlRunner) RunCurl(command string) (RunResult, error) {
+	return r.runCurl(command, fmt.Sprintf("run-%d", time.Now().UnixNano()))
+}
+
+func (r *CurlRunner) runCurl(command, runID string) (RunResult, error) {
 	log.Printf("[curl] starting request (%d bytes)", len(command))
 	args, err := parseCurlCommand(command)
 	if err != nil {
@@ -50,21 +71,10 @@ func (r *CurlRunner) RunCurl(command string) (RunResult, error) {
 		"--write-out", "\n__CURLDESK_META__%{http_code}|%{time_total}|%{size_request}|%{size_download}",
 	)
 
-	executable := "curl"
-	if runtime.GOOS == "windows" {
-		executable = "curl.exe"
-	}
-	cmd := exec.Command(executable, args...)
-	r.mu.Lock()
-	r.process = cmd
-	r.mu.Unlock()
-	defer func() {
-		r.mu.Lock()
-		if r.process == cmd {
-			r.process = nil
-		}
-		r.mu.Unlock()
-	}()
+	ctx, cancel := r.commandContext()
+	defer cancel()
+	cmd := r.newCommand(ctx, runID, args)
+	defer r.clearProcess(runID, cmd)
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -107,13 +117,10 @@ func (r *CurlRunner) RunCurlStream(command, runID string) (RunResult, error) {
 		// force the stream writer to hold a suffix while looking for that marker.
 		"--write-out", "%{stderr}__CURLDESK_META__%{http_code}|%{time_total}|%{size_request}|%{size_download}",
 	)
-	executable := "curl"
-	if runtime.GOOS == "windows" {
-		executable = "curl.exe"
-	}
-	cmd := exec.Command(executable, args...)
-	r.setProcess(cmd)
-	defer r.clearProcess(cmd)
+	ctx, cancel := r.commandContext()
+	defer cancel()
+	cmd := r.newCommand(ctx, runID, args)
+	defer r.clearProcess(runID, cmd)
 
 	var stdout, stderr strings.Builder
 	streamOutput := &curlStreamWriter{runID: runID, output: &stdout}
@@ -184,16 +191,39 @@ func stripCurlMetadata(output string) string {
 	return output
 }
 
-func (r *CurlRunner) setProcess(cmd *exec.Cmd) {
+func (r *CurlRunner) commandContext() (context.Context, context.CancelFunc) {
 	r.mu.Lock()
-	r.process = cmd
+	timeout := r.timeout
 	r.mu.Unlock()
+	if timeout <= 0 {
+		return context.Background(), func() {}
+	}
+	return context.WithTimeout(context.Background(), timeout)
 }
 
-func (r *CurlRunner) clearProcess(cmd *exec.Cmd) {
+func (r *CurlRunner) newCommand(ctx context.Context, runID string, args []string) *exec.Cmd {
 	r.mu.Lock()
-	if r.process == cmd {
-		r.process = nil
+	executable := r.executable
+	if executable == "" {
+		executable = "curl"
+		if runtime.GOOS == "windows" {
+			executable = "curl.exe"
+		}
+	}
+	if r.processes == nil {
+		r.processes = make(map[string]*exec.Cmd)
+	}
+	cmd := exec.CommandContext(ctx, executable, args...)
+	r.processes[runID] = cmd
+	r.lastRunID = runID
+	r.mu.Unlock()
+	return cmd
+}
+
+func (r *CurlRunner) clearProcess(runID string, cmd *exec.Cmd) {
+	r.mu.Lock()
+	if current, ok := r.processes[runID]; ok && current == cmd {
+		delete(r.processes, runID)
 	}
 	r.mu.Unlock()
 }
@@ -248,13 +278,126 @@ func splitResponseHeaders(output string) (headers, body string) {
 
 func (r *CurlRunner) StopCurl() error {
 	r.mu.Lock()
-	process := r.process
+	processes := make([]*exec.Cmd, 0, len(r.processes))
+	for _, process := range r.processes {
+		processes = append(processes, process)
+	}
+	r.mu.Unlock()
+	for _, process := range processes {
+		if process != nil && process.Process != nil {
+			log.Printf("[curl] stopping request")
+			if err := process.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// StopCurlByID stops one running request without affecting other tabs.
+func (r *CurlRunner) StopCurlByID(runID string) error {
+	r.mu.Lock()
+	process := r.processes[runID]
 	r.mu.Unlock()
 	if process == nil || process.Process == nil {
 		return nil
 	}
-	log.Printf("[curl] stopping request")
 	return process.Process.Kill()
+}
+
+// SetCurlPath configures the executable used for future runs. An empty path
+// restores the platform default (curl or curl.exe).
+func (r *CurlRunner) SetCurlPath(path string) error {
+	path = strings.TrimSpace(path)
+	if path != "" {
+		if _, err := exec.LookPath(path); err != nil {
+			return fmt.Errorf("curl executable not found: %w", err)
+		}
+	}
+	r.mu.Lock()
+	r.executable = path
+	r.mu.Unlock()
+	return nil
+}
+
+func (r *CurlRunner) SetTimeout(timeoutMs int64) error {
+	if timeoutMs < 0 {
+		return errors.New("curl timeout cannot be negative")
+	}
+	r.mu.Lock()
+	r.timeout = time.Duration(timeoutMs) * time.Millisecond
+	r.mu.Unlock()
+	return nil
+}
+
+func (r *CurlRunner) ServiceShutdown() error {
+	return r.StopCurl()
+}
+
+// ValidateCurl performs the checks that are safe to run before starting a
+// process. It intentionally accepts curl's broad option set and focuses on
+// malformed quoting, shell execution syntax, and missing option values.
+func (r *CurlRunner) ValidateCurl(command string) CurlValidation {
+	validation := CurlValidation{Valid: true, Diagnostics: []CurlDiagnostic{}}
+	args, err := parseCurlCommand(command)
+	if err != nil {
+		validation.Valid = false
+		validation.Diagnostics = append(validation.Diagnostics, CurlDiagnostic{Line: 1, Column: 1, Message: err.Error(), Severity: "error"})
+		return validation
+	}
+
+	if containsUnsafeShellSyntax(command) {
+		validation.Valid = false
+		validation.Diagnostics = append(validation.Diagnostics, CurlDiagnostic{Line: 1, Column: 1, Message: "shell operators are not allowed; execute curl arguments only", Severity: "error"})
+	}
+	for index, arg := range args {
+		if !curlOptionNeedsValue(arg) {
+			continue
+		}
+		if index+1 >= len(args) || strings.HasPrefix(args[index+1], "-") {
+			validation.Valid = false
+			validation.Diagnostics = append(validation.Diagnostics, CurlDiagnostic{Line: 1, Column: 1, Message: fmt.Sprintf("curl option %s requires a value", arg), Severity: "error"})
+		}
+	}
+	return validation
+}
+
+func curlOptionNeedsValue(option string) bool {
+	switch option {
+	case "-X", "--request", "-H", "--header", "-d", "--data", "--data-raw", "--data-binary", "--data-urlencode", "-F", "--form", "--url", "-o", "--output", "--max-time", "--connect-timeout":
+		return true
+	default:
+		return false
+	}
+}
+
+func containsUnsafeShellSyntax(command string) bool {
+	var quote rune
+	escaped := false
+	for _, char := range command {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if char == '\\' && quote != '\'' {
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if char == quote {
+				quote = 0
+			}
+			continue
+		}
+		if char == '\'' || char == '"' {
+			quote = char
+			continue
+		}
+		if char == ';' || char == '`' || char == '|' || char == '$' || char == '>' || char == '<' {
+			return true
+		}
+	}
+	return false
 }
 
 func parseCurlCommand(command string) ([]string, error) {

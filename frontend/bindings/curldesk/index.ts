@@ -10,5 +10,11 @@ export {
 
 export type {
     WorkspaceEntry
+    , WorkspaceInfo
     , RunResult
+    , CurlDiagnostic
+    , CurlValidation
+    , HistoryEntry
+    , DiagnosticInfo
+    , WorkspaceSearchResult
 } from "./models.js";

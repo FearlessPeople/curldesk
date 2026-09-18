@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -9,6 +10,11 @@ import (
 	"strconv"
 	"strings"
 )
+
+type WorkspaceInfo struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+}
 
 type WorkspaceEntry struct {
 	Path   string `json:"path"`
@@ -20,6 +26,165 @@ type WorkspaceEntry struct {
 
 type WorkspaceService struct {
 	root string
+}
+
+func (w *WorkspaceService) CurrentWorkspace() WorkspaceInfo {
+	w.initialize()
+	return WorkspaceInfo{Path: w.root, Name: filepath.Base(w.root)}
+}
+
+func (w *WorkspaceService) ListRecentWorkspaces() ([]WorkspaceInfo, error) {
+	path, err := recentWorkspacesPath()
+	if err != nil {
+		return []WorkspaceInfo{}, nil
+	}
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return []WorkspaceInfo{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read recent workspaces: %w", err)
+	}
+	var workspaces []WorkspaceInfo
+	if err := json.Unmarshal(data, &workspaces); err != nil {
+		return []WorkspaceInfo{}, nil
+	}
+	return existingWorkspaces(workspaces), nil
+}
+
+func (w *WorkspaceService) CreateWorkspace(path string) (WorkspaceInfo, error) {
+	resolved, err := normalizeWorkspacePath(path)
+	if err != nil {
+		return WorkspaceInfo{}, err
+	}
+	if err := os.MkdirAll(resolved, 0o755); err != nil {
+		return WorkspaceInfo{}, fmt.Errorf("create workspace: %w", err)
+	}
+	w.root = resolved
+	info := w.CurrentWorkspace()
+	return info, w.rememberWorkspace(info)
+}
+
+func (w *WorkspaceService) OpenWorkspace(path string) (WorkspaceInfo, error) {
+	resolved, err := normalizeWorkspacePath(path)
+	if err != nil {
+		return WorkspaceInfo{}, err
+	}
+	stat, err := os.Stat(resolved)
+	if err != nil {
+		return WorkspaceInfo{}, fmt.Errorf("open workspace: %w", err)
+	}
+	if !stat.IsDir() {
+		return WorkspaceInfo{}, errors.New("workspace path must be a directory")
+	}
+	w.root = resolved
+	info := w.CurrentWorkspace()
+	return info, w.rememberWorkspace(info)
+}
+
+func (w *WorkspaceService) ImportWorkspace(source string) error {
+	resolved, err := normalizeWorkspacePath(source)
+	if err != nil {
+		return err
+	}
+	stat, err := os.Stat(resolved)
+	if err != nil || !stat.IsDir() {
+		return errors.New("import source must be a directory")
+	}
+	entries, err := os.ReadDir(resolved)
+	if err != nil {
+		return fmt.Errorf("read import source: %w", err)
+	}
+	if err := w.ensureRoot(); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || strings.ToLower(filepath.Ext(entry.Name())) != ".curl" {
+			continue
+		}
+		content, readErr := os.ReadFile(filepath.Join(resolved, entry.Name()))
+		if readErr != nil {
+			return fmt.Errorf("read imported file: %w", readErr)
+		}
+		target := filepath.Join(w.root, entry.Name())
+		if _, statErr := os.Stat(target); statErr == nil {
+			target = filepath.Join(w.root, strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))+"-imported"+filepath.Ext(entry.Name()))
+		}
+		if writeErr := os.WriteFile(target, content, 0o644); writeErr != nil {
+			return fmt.Errorf("write imported file: %w", writeErr)
+		}
+	}
+	return nil
+}
+
+func (w *WorkspaceService) rememberWorkspace(info WorkspaceInfo) error {
+	workspaces, _ := w.ListRecentWorkspaces()
+	next := []WorkspaceInfo{info}
+	for _, workspace := range workspaces {
+		if workspace.Path != info.Path && len(next) < 10 {
+			next = append(next, workspace)
+		}
+	}
+	path, err := recentWorkspacesPath()
+	if err != nil {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(next, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
+}
+
+func recentWorkspacesPath() (string, error) {
+	config, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(config, "CurlDesk", "recent-workspaces.json"), nil
+}
+
+func normalizeWorkspacePath(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if strings.HasPrefix(path, "~"+string(filepath.Separator)) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		path = filepath.Join(home, strings.TrimPrefix(path, "~"+string(filepath.Separator)))
+	}
+	if path == "" {
+		return "", errors.New("workspace path is required")
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("invalid workspace path: %w", err)
+	}
+	return filepath.Clean(absolute), nil
+}
+
+func existingWorkspaces(workspaces []WorkspaceInfo) []WorkspaceInfo {
+	result := make([]WorkspaceInfo, 0, len(workspaces))
+	seen := make(map[string]struct{})
+	for _, workspace := range workspaces {
+		if workspace.Path == "" {
+			continue
+		}
+		if _, ok := seen[workspace.Path]; ok {
+			continue
+		}
+		if info, err := os.Stat(workspace.Path); err == nil && info.IsDir() {
+			result = append(result, workspace)
+			seen[workspace.Path] = struct{}{}
+		}
+	}
+	return result
 }
 
 func (w *WorkspaceService) ListEnvironments() (map[string]map[string]string, error) {
@@ -53,7 +218,11 @@ func (w *WorkspaceService) SaveEnvironments(environments map[string]map[string]s
 			}
 		}
 	}
-	return os.WriteFile(filepath.Join(w.root, "environments.yaml"), []byte(builder.String()), 0o644)
+	path := filepath.Join(w.root, "environments.yaml")
+	if err := os.WriteFile(path, []byte(builder.String()), 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
 }
 
 func (w *WorkspaceService) LoadSettings() (map[string]string, error) {

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { json } from '@codemirror/lang-json'
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { foldAll, HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { search, SearchQuery, setSearchQuery } from '@codemirror/search'
 import { EditorState } from '@codemirror/state'
 import { basicSetup } from 'codemirror'
 import { EditorView } from '@codemirror/view'
@@ -21,9 +22,11 @@ type OutputEditorProps = {
   fontSize?: number
   wrap?: boolean
   loading?: boolean
+  searchTerm?: string
+  collapseSignal?: number
 }
 
-export function OutputEditor({ value, mode = 'response', fontSize = 14, wrap = true, loading = false }: OutputEditorProps) {
+export function OutputEditor({ value, mode = 'response', fontSize = 14, wrap = true, loading = false, searchTerm = '', collapseSignal = 0 }: OutputEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
 
@@ -33,6 +36,7 @@ export function OutputEditor({ value, mode = 'response', fontSize = 14, wrap = t
       doc: value,
       extensions: [
         basicSetup,
+        search(),
         ...(mode === 'response' ? [json(), outputHighlighting] : []),
         EditorState.readOnly.of(true),
         EditorView.editable.of(false),
@@ -95,6 +99,18 @@ export function OutputEditor({ value, mode = 'response', fontSize = 14, wrap = t
     if (!view || view.state.doc.toString() === value) return
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } })
   }, [value])
+
+  useEffect(() => {
+    const view = viewRef.current
+    if (!view) return
+    view.dispatch({ effects: setSearchQuery.of(new SearchQuery({ search: searchTerm, caseSensitive: false })) })
+  }, [searchTerm])
+
+  useEffect(() => {
+    if (collapseSignal === 0) return
+    const view = viewRef.current
+    if (view) foldAll(view)
+  }, [collapseSignal])
 
   return (
     <div className="relative h-full min-h-0 min-w-0 flex-1 overflow-hidden" aria-label="Request output">
