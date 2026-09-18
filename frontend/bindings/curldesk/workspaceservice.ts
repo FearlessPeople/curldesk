@@ -9,98 +9,142 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+export function ClearHistory(): $CancellablePromise<void> {
+    return $Call.ByID(3721861554);
+}
+
 export function CreateFile(folder: string, name: string): $CancellablePromise<$models.WorkspaceEntry> {
-    return $Call.ByID(3787448474, folder, name);
+    return $Call.ByID(3368069835, folder, name);
 }
 
 export function CreateFolder(parent: string, name: string): $CancellablePromise<void> {
-    return $Call.ByID(585698680, parent, name);
-}
-
-export function DeleteEntry(relative: string): $CancellablePromise<void> {
-    return $Call.ByID(2468227501, relative);
-}
-
-export function ListWorkspace(): $CancellablePromise<$models.WorkspaceEntry[] | null> {
-    return $Call.ByID(1335838253);
-}
-
-export function ListEnvironments(): $CancellablePromise<Record<string, Record<string, string>>> {
-    return $Call.ByName("main.WorkspaceService.ListEnvironments");
-}
-
-export function LoadSettings(): $CancellablePromise<Record<string, string>> {
-    return $Call.ByName("main.WorkspaceService.LoadSettings");
-}
-
-export function ReadFile(relative: string): $CancellablePromise<string> {
-    return $Call.ByID(2517090602, relative);
-}
-
-export function RenameEntry(relative: string, name: string): $CancellablePromise<void> {
-    return $Call.ByID(2590253538, relative, name);
-}
-
-export function SaveFile(relative: string, content: string): $CancellablePromise<void> {
-    return $Call.ByID(3758940195, relative, content);
-}
-
-export function SaveEnvironments(environments: Record<string, Record<string, string>>): $CancellablePromise<void> {
-    return $Call.ByName("main.WorkspaceService.SaveEnvironments", environments);
-}
-
-export function SaveSettings(settings: Record<string, string>): $CancellablePromise<void> {
-    return $Call.ByName("main.WorkspaceService.SaveSettings", settings);
-}
-
-export function ResolveEnvironment(command: string, environment: string): $CancellablePromise<string> {
-    return $Call.ByName("main.WorkspaceService.ResolveEnvironment", command, environment);
-}
-
-export function ValidateEnvironment(command: string, environment: string): $CancellablePromise<string[] | null> {
-    return $Call.ByName("main.WorkspaceService.ValidateEnvironment", command, environment);
-}
-
-export function LoadDotEnv(): $CancellablePromise<Record<string, string>> {
-    return $Call.ByName("main.WorkspaceService.LoadDotEnv");
-}
-
-export function SaveDotEnv(values: Record<string, string>): $CancellablePromise<void> {
-    return $Call.ByName("main.WorkspaceService.SaveDotEnv", values);
-}
-
-export function RecordHistory(filePath: string, environment: string, command: string, output: string, responseHeaders: string, exitCode: number, status: number, durationMs: number): $CancellablePromise<void> {
-    return $Call.ByName("main.WorkspaceService.RecordHistory", filePath, environment, command, output, responseHeaders, exitCode, status, durationMs);
-}
-
-export function ListHistory(query: string): $CancellablePromise<$models.HistoryEntry[] | null> {
-    return $Call.ByName("main.WorkspaceService.ListHistory", query);
-}
-
-export function ClearHistory(): $CancellablePromise<void> {
-    return $Call.ByName("main.WorkspaceService.ClearHistory");
-}
-
-export function SearchWorkspace(query: string): $CancellablePromise<$models.WorkspaceSearchResult[] | null> {
-    return $Call.ByName("main.WorkspaceService.SearchWorkspace", query);
-}
-
-export function CurrentWorkspace(): $CancellablePromise<$models.WorkspaceInfo> {
-    return $Call.ByName("main.WorkspaceService.CurrentWorkspace");
-}
-
-export function ListRecentWorkspaces(): $CancellablePromise<$models.WorkspaceInfo[] | null> {
-    return $Call.ByName("main.WorkspaceService.ListRecentWorkspaces");
+    return $Call.ByID(3887011749, parent, name);
 }
 
 export function CreateWorkspace(path: string): $CancellablePromise<$models.WorkspaceInfo> {
-    return $Call.ByName("main.WorkspaceService.CreateWorkspace", path);
+    return $Call.ByID(3984024366, path);
+}
+
+/**
+ * CreateWorkspaceByName creates a new workspace in CurlDesk's managed workspace directory.
+ */
+export function CreateWorkspaceByName(name: string): $CancellablePromise<$models.WorkspaceInfo> {
+    return $Call.ByID(3576202980, name);
+}
+
+export function CurrentWorkspace(): $CancellablePromise<$models.WorkspaceInfo> {
+    return $Call.ByID(2637744379);
+}
+
+export function DeleteEntry(relative: string): $CancellablePromise<void> {
+    return $Call.ByID(1008936882, relative);
+}
+
+/**
+ * DeleteWorkspace removes a custom workspace from disk.
+ */
+export function DeleteWorkspace(path: string): $CancellablePromise<void> {
+    return $Call.ByID(1547519051, path);
+}
+
+export function ImportWorkspace(source: string): $CancellablePromise<void> {
+    return $Call.ByID(735984305, source);
+}
+
+export function ListEnvironments(): $CancellablePromise<{ [_ in string]?: { [_ in string]?: string } | null } | null> {
+    return $Call.ByID(1224077663);
+}
+
+/**
+ * ListGlobalEnvironments returns environments shared by all workspaces.
+ */
+export function ListGlobalEnvironments(): $CancellablePromise<{ [_ in string]?: { [_ in string]?: string } | null } | null> {
+    return $Call.ByID(4140983004);
+}
+
+export function ListHistory(query: string): $CancellablePromise<$models.HistoryEntry[] | null> {
+    return $Call.ByID(1542335443, query);
+}
+
+export function ListRecentWorkspaces(): $CancellablePromise<$models.WorkspaceInfo[] | null> {
+    return $Call.ByID(3508350584);
+}
+
+export function ListWorkspace(): $CancellablePromise<$models.WorkspaceEntry[] | null> {
+    return $Call.ByID(2681163026);
+}
+
+export function LoadDotEnv(): $CancellablePromise<{ [_ in string]?: string } | null> {
+    return $Call.ByID(2451630115);
+}
+
+export function LoadSettings(): $CancellablePromise<{ [_ in string]?: string } | null> {
+    return $Call.ByID(2397733316);
 }
 
 export function OpenWorkspace(path: string): $CancellablePromise<$models.WorkspaceInfo> {
-    return $Call.ByName("main.WorkspaceService.OpenWorkspace", path);
+    return $Call.ByID(3583570634, path);
 }
 
-export function ImportWorkspace(path: string): $CancellablePromise<void> {
-    return $Call.ByName("main.WorkspaceService.ImportWorkspace", path);
+/**
+ * OpenWorkspaceInFileManager opens a workspace directory in the native file manager.
+ */
+export function OpenWorkspaceInFileManager(path: string): $CancellablePromise<void> {
+    return $Call.ByID(2093242754, path);
+}
+
+export function ReadFile(relative: string): $CancellablePromise<string> {
+    return $Call.ByID(2020934899, relative);
+}
+
+export function ReadSearchResult(result: $models.WorkspaceSearchResult): $CancellablePromise<string> {
+    return $Call.ByID(3566539256, result);
+}
+
+export function RecordHistory(filePath: string, environment: string, command: string, output: string, responseHeaders: string, exitCode: number, status: number, durationMs: number): $CancellablePromise<void> {
+    return $Call.ByID(2878949836, filePath, environment, command, output, responseHeaders, exitCode, status, durationMs);
+}
+
+export function RenameEntry(relative: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(380891869, relative, name);
+}
+
+/**
+ * ResolveEnvironment expands CurlDesk variables without invoking a shell.
+ * Values are layered from system environment, global environment, workspace
+ * .env, then the selected workspace environment, so workspace settings win.
+ */
+export function ResolveEnvironment(command: string, environment: string): $CancellablePromise<string> {
+    return $Call.ByID(2174588780, command, environment);
+}
+
+export function SaveDotEnv(values: { [_ in string]?: string } | null): $CancellablePromise<void> {
+    return $Call.ByID(3922209810, values);
+}
+
+export function SaveEnvironments(environments: { [_ in string]?: { [_ in string]?: string } | null } | null): $CancellablePromise<void> {
+    return $Call.ByID(2541964574, environments);
+}
+
+export function SaveFile(relative: string, content: string): $CancellablePromise<void> {
+    return $Call.ByID(588233710, relative, content);
+}
+
+/**
+ * SaveGlobalEnvironments persists environments shared by all workspaces.
+ */
+export function SaveGlobalEnvironments(environments: { [_ in string]?: { [_ in string]?: string } | null } | null): $CancellablePromise<void> {
+    return $Call.ByID(745398161, environments);
+}
+
+export function SaveSettings(settings: { [_ in string]?: string } | null): $CancellablePromise<void> {
+    return $Call.ByID(4003967077, settings);
+}
+
+export function SearchWorkspace(query: string): $CancellablePromise<$models.WorkspaceSearchResult[] | null> {
+    return $Call.ByID(1141139658, query);
+}
+
+export function ValidateEnvironment(command: string, environment: string): $CancellablePromise<string[] | null> {
+    return $Call.ByID(68797508, command, environment);
 }

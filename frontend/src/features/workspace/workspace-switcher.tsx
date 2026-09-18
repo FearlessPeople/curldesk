@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronDown, Download, FolderOpen, FolderPlus, Settings2 } from 'lucide-react'
+import { Check, ChevronDown, ExternalLink, FolderOpen, FolderPlus, Plus, Settings2, Trash2 } from 'lucide-react'
 
 import { Events } from '@wailsio/runtime'
 import { Button } from '@/components/button'
@@ -15,13 +15,15 @@ type WorkspaceSwitcherProps = {
   onChanged: (workspace: WorkspaceInfo) => void
 }
 
-type DialogMode = 'create' | 'open' | 'import' | 'manage' | null
+type DialogMode = 'create' | 'open' | 'manage' | null
 
 export function WorkspaceSwitcher({ current, onChanged }: WorkspaceSwitcherProps) {
   const [recent, setRecent] = useState<WorkspaceInfo[]>([])
   const [mode, setMode] = useState<DialogMode>(null)
   const [path, setPath] = useState('')
   const [error, setError] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<WorkspaceInfo | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const loadRecent = async () => {
     try { setRecent((await WorkspaceService.ListRecentWorkspaces()) ?? []) } catch { setRecent([]) }
@@ -31,7 +33,7 @@ export function WorkspaceSwitcher({ current, onChanged }: WorkspaceSwitcherProps
 
   const openMode = (next: Exclude<DialogMode, null>) => {
     setError('')
-    setPath(next === 'create' ? `${current.path}/NewWorkspace` : '')
+    setPath('')
     setMode(next)
   }
 
@@ -46,16 +48,37 @@ export function WorkspaceSwitcher({ current, onChanged }: WorkspaceSwitcherProps
     }
   }
 
+  const openWorkspaceDirectory = async (workspacePath: string) => {
+    try {
+      await WorkspaceService.OpenWorkspaceInFileManager(workspacePath)
+      setError('')
+    } catch (value) {
+      setError(value instanceof Error ? value.message : 'Unable to open workspace directory.')
+    }
+  }
+
+  const confirmDeleteWorkspace = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await WorkspaceService.DeleteWorkspace(deleteTarget.path)
+      setRecent((current) => current.filter((workspace) => workspace.path !== deleteTarget.path))
+      setDeleteTarget(null)
+      setError('')
+    } catch (value) {
+      setError(value instanceof Error ? value.message : 'Unable to delete workspace.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const submit = async () => {
     if (!path.trim() || mode === 'manage') return
     try {
       if (mode === 'create') {
-        onChanged(await WorkspaceService.CreateWorkspace(path))
+        onChanged(await WorkspaceService.CreateWorkspaceByName(path))
       } else if (mode === 'open') {
         onChanged(await WorkspaceService.OpenWorkspace(path))
-      } else if (mode === 'import') {
-        await WorkspaceService.ImportWorkspace(path)
-        await Events.Emit('curldesk:collections-changed')
       }
       await Events.Emit('curldesk:workspace-changed')
       await Events.Emit('curldesk:collections-changed')
@@ -93,35 +116,96 @@ export function WorkspaceSwitcher({ current, onChanged }: WorkspaceSwitcherProps
             ))}
             <DropdownMenuSeparator />
             <DropdownMenuItem onSelect={() => openMode('create')}><FolderPlus /> Create workspace</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => openMode('open')}><FolderOpen /> Open workspace</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => openMode('import')}><Download /> Import workspace</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => openMode('manage')}><Settings2 /> Manage workspaces</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
 
       <Dialog open={mode !== null} onOpenChange={(open) => { if (!open) setMode(null) }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{mode === 'create' ? 'Create workspace' : mode === 'open' ? 'Open workspace' : mode === 'import' ? 'Import workspace' : 'Manage workspaces'}</DialogTitle>
-            <DialogDescription>
-              {mode === 'create' ? 'Choose a folder for a new local workspace.' : mode === 'open' ? 'Enter the path of an existing workspace folder.' : mode === 'import' ? 'Import .curl files from another folder into the current workspace.' : 'Choose a recent workspace to switch to.'}
-            </DialogDescription>
-          </DialogHeader>
+        <DialogContent className={mode === 'manage' ? 'max-w-3xl gap-0 overflow-hidden p-0' : 'max-w-md'}>
           {mode === 'manage' ? (
-            <div className="space-y-1">
-              {recent.map((workspace) => (
-                <Button key={workspace.path} variant="ghost" className="h-auto w-full justify-start px-2 py-2 text-left" onClick={() => { void switchWorkspace(workspace.path); setMode(null) }}>
-                  <span className="min-w-0 flex-1"><span className="block text-sm">{workspace.name}</span><span className="block truncate text-xs text-muted-foreground">{workspace.path}</span></span>
-                </Button>
-              ))}
-              {recent.length === 0 && <p className="py-4 text-sm text-muted-foreground">No recent workspaces.</p>}
+            <div>
+              <header className="flex items-center justify-between border-b px-6 py-4 pr-12">
+                <div>
+                  <DialogTitle className="text-base">Manage Workspaces</DialogTitle>
+                  <DialogDescription className="mt-1">Switch between isolated local workspaces.</DialogDescription>
+                </div>
+                <Button size="sm" onClick={() => openMode('create')}><Plus className="size-3.5" />Create workspace</Button>
+              </header>
+              {error && <p className="border-b px-6 py-2 text-xs text-destructive">{error}</p>}
+              <div className="p-2">
+                {recent.map((workspace) => (
+                  <div key={workspace.path} className="flex items-center gap-4 border-b px-4 py-3 last:border-b-0">
+                    <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        <span className="truncate">{workspace.name}</span>
+                        {workspace.default && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">Default</span>}
+                        {workspace.path === current.path && <Check className="size-3.5 text-primary" />}
+                      </div>
+                      <span className="block truncate text-xs text-muted-foreground">{workspace.path}</span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button variant="ghost" size="icon" className="size-7" aria-label={`Open ${workspace.name} in file manager`} onClick={() => void openWorkspaceDirectory(workspace.path)}><ExternalLink className="size-3.5" /></Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">Open in file manager</TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span tabIndex={workspace.default || workspace.path === current.path ? 0 : undefined}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-7 text-muted-foreground hover:text-destructive"
+                              aria-label={`Delete ${workspace.name}`}
+                              disabled={workspace.default || workspace.path === current.path}
+                              onClick={() => setDeleteTarget(workspace)}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </Button>
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">{workspace.default ? 'Default workspace cannot be deleted' : workspace.path === current.path ? 'Switch workspace before deleting' : 'Delete workspace'}</TooltipContent>
+                      </Tooltip>
+                      <Button variant="ghost" size="sm" onClick={() => { void switchWorkspace(workspace.path); setMode(null) }}>Open</Button>
+                    </div>
+                  </div>
+                ))}
+                {recent.length === 0 && <p className="px-4 py-8 text-sm text-muted-foreground">No recent workspaces.</p>}
+              </div>
             </div>
           ) : (
-            <Input autoFocus value={path} onChange={(event) => setPath(event.target.value)} placeholder="/Users/you/CurlDeskWorkspace" aria-label="Workspace path" onKeyDown={(event) => { if (event.key === 'Enter') void submit() }} />
+            <>
+              <DialogHeader>
+                <DialogTitle>{mode === 'create' ? 'Create workspace' : 'Open workspace'}</DialogTitle>
+                <DialogDescription>
+                  {mode === 'create' ? 'Choose a name for a new local workspace.' : 'Enter the path of an existing workspace folder.'}
+                </DialogDescription>
+              </DialogHeader>
+              <Input autoFocus value={path} onChange={(event) => setPath(event.target.value)} placeholder={mode === 'create' ? 'Workspace name' : '/Users/you/CurlDeskWorkspace'} aria-label={mode === 'create' ? 'Workspace name' : 'Workspace path'} onKeyDown={(event) => { if (event.key === 'Enter') void submit() }} />
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <DialogFooter><Button variant="ghost" onClick={() => setMode(null)}>Cancel</Button><Button onClick={() => void submit()} disabled={!path.trim()}>{mode === 'create' ? 'Create' : 'Open'}</Button></DialogFooter>
+            </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open && !deleting) setDeleteTarget(null) }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete workspace?</DialogTitle>
+            <DialogDescription>
+              This permanently removes <span className="font-medium text-foreground">{deleteTarget?.name}</span> and its local files from disk.
+            </DialogDescription>
+          </DialogHeader>
+          <p className="break-all rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">{deleteTarget?.path}</p>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          {mode !== 'manage' && <DialogFooter><Button variant="ghost" onClick={() => setMode(null)}>Cancel</Button><Button onClick={() => void submit()} disabled={!path.trim()}>{mode === 'create' ? 'Create' : mode === 'import' ? 'Import' : 'Open'}</Button></DialogFooter>}
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancel</Button>
+            <Button variant="destructive" onClick={() => void confirmDeleteWorkspace()} disabled={deleting}>{deleting ? 'Deleting...' : 'Delete workspace'}</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>

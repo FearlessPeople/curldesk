@@ -4,6 +4,7 @@ import (
 	"embed"
 	"log"
 
+	"curldesk/internal/backend"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -19,8 +20,8 @@ func main() {
 		Description: "A local-first curl workbench",
 		Icon:        appIcon,
 		Services: []application.Service{
-			application.NewService(&WorkspaceService{}),
-			application.NewService(&CurlRunner{}),
+			application.NewService(&backend.WorkspaceService{}),
+			application.NewService(&backend.CurlRunner{}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

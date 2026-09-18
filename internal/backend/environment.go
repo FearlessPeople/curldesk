@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"fmt"
@@ -12,14 +12,39 @@ import (
 
 var environmentVariablePattern = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_-]*)\s*\}\}`)
 
+// ListGlobalEnvironments returns environments shared by all workspaces.
+func (w *WorkspaceService) ListGlobalEnvironments() (map[string]map[string]string, error) {
+	path, err := globalEnvironmentsPath()
+	if err != nil {
+		return nil, err
+	}
+	return readEnvironmentsFile(path), nil
+}
+
+// SaveGlobalEnvironments persists environments shared by all workspaces.
+func (w *WorkspaceService) SaveGlobalEnvironments(environments map[string]map[string]string) error {
+	path, err := globalEnvironmentsPath()
+	if err != nil {
+		return err
+	}
+	return writeEnvironmentsFile(path, environments)
+}
+
 // ResolveEnvironment expands CurlDesk variables without invoking a shell.
-// Values are layered from system environment, workspace .env, then the
-// selected CurlDesk environment, so explicit workspace settings win.
+// Values are layered from system environment, global environment, workspace
+// .env, then the selected workspace environment, so workspace settings win.
 func (w *WorkspaceService) ResolveEnvironment(command, environment string) (string, error) {
 	if err := w.ensureRoot(); err != nil {
 		return "", err
 	}
 	values := systemEnvironment()
+	globalEnvironments, err := w.ListGlobalEnvironments()
+	if err != nil {
+		return "", err
+	}
+	for key, value := range globalEnvironments[environment] {
+		values[key] = value
+	}
 	if dotenv, err := w.LoadDotEnv(); err == nil {
 		for key, value := range dotenv {
 			values[key] = value
@@ -47,6 +72,44 @@ func (w *WorkspaceService) ResolveEnvironment(command, environment string) (stri
 		return "", fmt.Errorf("missing environment variables: %s", strings.Join(uniqueStrings(missing), ", "))
 	}
 	return resolved, nil
+}
+
+func globalEnvironmentsPath() (string, error) {
+	config, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve global environment path: %w", err)
+	}
+	return filepath.Join(config, "CurlDesk", "global-environments.yaml"), nil
+}
+
+func readEnvironmentsFile(path string) map[string]map[string]string {
+	data, err := os.ReadFile(path)
+	if os.IsNotExist(err) || err != nil {
+		return map[string]map[string]string{"Dev": {}}
+	}
+	return parseEnvironmentsYAML(string(data))
+}
+
+func writeEnvironmentsFile(path string, environments map[string]map[string]string) error {
+	var builder strings.Builder
+	for name, variables := range environments {
+		if !validName(name) {
+			continue
+		}
+		builder.WriteString(fmt.Sprintf("%s:\n", name))
+		for key, value := range variables {
+			if validEnvironmentKey(key) {
+				builder.WriteString(fmt.Sprintf("  %s: %s\n", key, strconv.Quote(value)))
+			}
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, []byte(builder.String()), 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
 }
 
 func (w *WorkspaceService) ValidateEnvironment(command, environment string) ([]string, error) {

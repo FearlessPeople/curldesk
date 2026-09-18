@@ -1,4 +1,4 @@
-package main
+package backend
 
 import (
 	"bufio"
@@ -108,6 +108,13 @@ func (w *WorkspaceService) ClearHistory() error {
 
 func (w *WorkspaceService) historyEnvironmentValues(environment string) (map[string]string, error) {
 	values := systemEnvironment()
+	globalEnvironments, err := w.ListGlobalEnvironments()
+	if err != nil {
+		return nil, err
+	}
+	for key, value := range globalEnvironments[environment] {
+		values[key] = value
+	}
 	dotenv, err := w.LoadDotEnv()
 	if err != nil {
 		return nil, err

@@ -1,19 +1,22 @@
-package main
+package backend
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 )
 
 type WorkspaceInfo struct {
-	Path string `json:"path"`
-	Name string `json:"name"`
+	Path    string `json:"path"`
+	Name    string `json:"name"`
+	Default bool   `json:"default"`
 }
 
 type WorkspaceEntry struct {
@@ -30,7 +33,10 @@ type WorkspaceService struct {
 
 func (w *WorkspaceService) CurrentWorkspace() WorkspaceInfo {
 	w.initialize()
-	return WorkspaceInfo{Path: w.root, Name: filepath.Base(w.root)}
+	_ = os.MkdirAll(w.root, 0o755)
+	info := workspaceInfo(w.root)
+	_ = w.rememberWorkspace(info)
+	return info
 }
 
 func (w *WorkspaceService) ListRecentWorkspaces() ([]WorkspaceInfo, error) {
@@ -65,6 +71,30 @@ func (w *WorkspaceService) CreateWorkspace(path string) (WorkspaceInfo, error) {
 	return info, w.rememberWorkspace(info)
 }
 
+// CreateWorkspaceByName creates a new workspace in CurlDesk's managed workspace directory.
+func (w *WorkspaceService) CreateWorkspaceByName(name string) (WorkspaceInfo, error) {
+	name = strings.TrimSpace(name)
+	if !validWorkspaceName(name) {
+		return WorkspaceInfo{}, errors.New("workspace name must be a single folder name")
+	}
+	root, err := managedWorkspacesPath()
+	if err != nil {
+		return WorkspaceInfo{}, err
+	}
+	path := filepath.Join(root, name)
+	if _, err := os.Stat(path); err == nil {
+		return WorkspaceInfo{}, errors.New("a workspace with this name already exists")
+	} else if !os.IsNotExist(err) {
+		return WorkspaceInfo{}, fmt.Errorf("check workspace: %w", err)
+	}
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return WorkspaceInfo{}, fmt.Errorf("create workspace: %w", err)
+	}
+	w.root = path
+	info := workspaceInfo(path)
+	return info, w.rememberWorkspace(info)
+}
+
 func (w *WorkspaceService) OpenWorkspace(path string) (WorkspaceInfo, error) {
 	resolved, err := normalizeWorkspacePath(path)
 	if err != nil {
@@ -80,6 +110,61 @@ func (w *WorkspaceService) OpenWorkspace(path string) (WorkspaceInfo, error) {
 	w.root = resolved
 	info := w.CurrentWorkspace()
 	return info, w.rememberWorkspace(info)
+}
+
+// OpenWorkspaceInFileManager opens a workspace directory in the native file manager.
+func (w *WorkspaceService) OpenWorkspaceInFileManager(path string) error {
+	resolved, err := normalizeWorkspacePath(path)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return fmt.Errorf("open workspace directory: %w", err)
+	}
+	if !info.IsDir() {
+		return errors.New("workspace path must be a directory")
+	}
+
+	var command *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		command = exec.Command("open", resolved)
+	case "windows":
+		command = exec.Command("explorer", resolved)
+	default:
+		command = exec.Command("xdg-open", resolved)
+	}
+	if err := command.Start(); err != nil {
+		return fmt.Errorf("open workspace directory: %w", err)
+	}
+	return nil
+}
+
+// DeleteWorkspace removes a custom workspace from disk.
+func (w *WorkspaceService) DeleteWorkspace(path string) error {
+	resolved, err := normalizeWorkspacePath(path)
+	if err != nil {
+		return err
+	}
+	if isDefaultWorkspacePath(resolved) {
+		return errors.New("the default workspace cannot be deleted")
+	}
+	w.initialize()
+	if filepath.Clean(w.root) == filepath.Clean(resolved) {
+		return errors.New("switch to another workspace before deleting the current workspace")
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return fmt.Errorf("delete workspace: %w", err)
+	}
+	if !info.IsDir() {
+		return errors.New("workspace path must be a directory")
+	}
+	if err := os.RemoveAll(resolved); err != nil {
+		return fmt.Errorf("delete workspace: %w", err)
+	}
+	return nil
 }
 
 func (w *WorkspaceService) ImportWorkspace(source string) error {
@@ -150,6 +235,14 @@ func recentWorkspacesPath() (string, error) {
 	return filepath.Join(config, "CurlDesk", "recent-workspaces.json"), nil
 }
 
+func managedWorkspacesPath() (string, error) {
+	config, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(config, "CurlDesk", "workspaces"), nil
+}
+
 func normalizeWorkspacePath(path string) (string, error) {
 	path = strings.TrimSpace(path)
 	if strings.HasPrefix(path, "~"+string(filepath.Separator)) {
@@ -180,6 +273,12 @@ func existingWorkspaces(workspaces []WorkspaceInfo) []WorkspaceInfo {
 			continue
 		}
 		if info, err := os.Stat(workspace.Path); err == nil && info.IsDir() {
+			workspace.Default = isDefaultWorkspacePath(workspace.Path)
+			if workspace.Default {
+				workspace.Name = "My Workspace"
+			} else if workspace.Name == "" {
+				workspace.Name = filepath.Base(workspace.Path)
+			}
 			result = append(result, workspace)
 			seen[workspace.Path] = struct{}{}
 		}
@@ -324,11 +423,36 @@ func (w *WorkspaceService) initialize() {
 	if w.root != "" {
 		return
 	}
-	home, err := os.UserHomeDir()
+	path, err := defaultWorkspacePath()
 	if err != nil {
-		home = "."
+		home, homeErr := os.UserHomeDir()
+		if homeErr != nil {
+			home = "."
+		}
+		path = filepath.Join(home, "CurlDeskWorkspace")
 	}
-	w.root = filepath.Join(home, "CurlDeskWorkspace")
+	w.root = path
+}
+
+func defaultWorkspacePath() (string, error) {
+	config, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(config, "CurlDesk", "default-workspace"), nil
+}
+
+func isDefaultWorkspacePath(path string) bool {
+	defaultPath, err := defaultWorkspacePath()
+	return err == nil && filepath.Clean(path) == filepath.Clean(defaultPath)
+}
+
+func workspaceInfo(path string) WorkspaceInfo {
+	info := WorkspaceInfo{Path: path, Name: filepath.Base(path), Default: isDefaultWorkspacePath(path)}
+	if info.Default {
+		info.Name = "My Workspace"
+	}
+	return info
 }
 
 func (w *WorkspaceService) ensureRoot() error {
@@ -350,6 +474,10 @@ func (w *WorkspaceService) resolve(relative string) (string, error) {
 
 func validName(name string) bool {
 	return name != "" && name != "." && name != ".." && filepath.Base(name) == name && !strings.ContainsAny(name, `/\\`)
+}
+
+func validWorkspaceName(name string) bool {
+	return name != "" && name != "." && name != ".." && filepath.Base(name) == name && !strings.ContainsAny(name, `/\\:`)
 }
 
 func (w *WorkspaceService) ListWorkspace() ([]WorkspaceEntry, error) {

@@ -21,6 +21,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/dropdown-menu'
 import { Separator } from '@/components/separator'
+import { isMacOS } from '@/lib/platform'
 import { CurlRunner, WorkspaceService } from '../bindings/curldesk'
 import type { WorkspaceEntry } from '../bindings/curldesk'
 import type { DiagnosticInfo, HistoryEntry, WorkspaceInfo } from '../bindings/curldesk/models'
@@ -44,6 +45,8 @@ type AppSettings = {
 type ThemeColor = 'blue' | 'violet' | 'emerald' | 'orange' | 'rose'
 type Appearance = 'light' | 'dark' | 'system'
 type Environments = Record<string, Record<string, string>>
+type GeneratedEnvironmentValues = Record<string, string | undefined> | null | undefined
+type GeneratedEnvironments = Record<string, GeneratedEnvironmentValues> | null | undefined
 type RequestResult = {
   output: string
   runInfo: { status: number; durationMs: number; requestSize: number; responseSize: number; headers: string } | null
@@ -99,6 +102,16 @@ const themeColors: Record<ThemeColor, ThemeDefinition> = {
 }
 
 const defaultSettings: AppSettings = { autoSave: true, editorFontSize: 14, wrapOutput: true, curlPath: '', requestTimeoutMs: 0, themeColor: 'blue', appearance: 'system' }
+const statusBarActionClass = 'h-7 rounded-md px-2 text-xs text-muted-foreground transition-[background-color,color,box-shadow] hover:bg-primary hover:text-primary-foreground hover:shadow-sm'
+
+function normalizeEnvironmentValues(values: GeneratedEnvironmentValues): Record<string, string> {
+  const entries = Object.entries(values ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+  return Object.fromEntries(entries)
+}
+
+function normalizeEnvironments(values: GeneratedEnvironments): Environments {
+  return Object.fromEntries(Object.entries(values ?? {}).map(([name, variables]) => [name, normalizeEnvironmentValues(variables)]))
+}
 
 function loadSettings(): AppSettings {
   try {
@@ -189,7 +202,8 @@ export default function App() {
   const [settings, setSettings] = useState<AppSettings>(loadSettings)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [environments, setEnvironments] = useState<Environments>({ Dev: {} })
-  const [workspace, setWorkspace] = useState<WorkspaceInfo>({ path: '', name: 'My Workspace' })
+  const [globalEnvironments, setGlobalEnvironments] = useState<Environments>({ Dev: {} })
+  const [workspace, setWorkspace] = useState<WorkspaceInfo>({ path: '', name: 'My Workspace', default: true })
   const [activeEnvironment, setActiveEnvironment] = useState('Dev')
   const theme = themeColors[settings.themeColor]
   const [systemDark, setSystemDark] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
@@ -260,6 +274,24 @@ export default function App() {
     }
   }
 
+  const loadEnvironmentSets = useCallback(async () => {
+    try {
+      const [workspaceLoaded, globalLoaded] = await Promise.all([
+        WorkspaceService.ListEnvironments(),
+        WorkspaceService.ListGlobalEnvironments(),
+      ])
+      const nextWorkspace = normalizeEnvironments(workspaceLoaded)
+      const nextGlobal = normalizeEnvironments(globalLoaded)
+      const workspaceValues = Object.keys(nextWorkspace).length > 0 ? nextWorkspace : { Dev: {} }
+      const globalValues = Object.keys(nextGlobal).length > 0 ? nextGlobal : { Dev: {} }
+      setEnvironments(workspaceValues)
+      setGlobalEnvironments(globalValues)
+      setActiveEnvironment((current) => workspaceValues[current] ? current : Object.keys(workspaceValues)[0] || 'Dev')
+    } catch (error) {
+      console.error('Unable to load environments', error)
+    }
+  }, [])
+
   useEffect(() => {
     void WorkspaceService.CurrentWorkspace().then(setWorkspace).catch((error) => console.error('Unable to load current workspace', error))
     void syncOpenRequests().finally(() => setBooting(false))
@@ -269,15 +301,11 @@ export default function App() {
       setRequestResults({})
       setActiveRequest('')
       void WorkspaceService.CurrentWorkspace().then(setWorkspace)
-      void WorkspaceService.ListEnvironments().then((loaded) => {
-        const next = loaded && Object.keys(loaded).length > 0 ? loaded : { Dev: {} }
-        setEnvironments(next)
-        setActiveEnvironment(Object.keys(next)[0] || 'Dev')
-      })
+      void loadEnvironmentSets()
       void syncOpenRequests()
     })
     return () => { unsubscribe(); unsubscribeWorkspace() }
-  }, [])
+  }, [loadEnvironmentSets])
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
@@ -290,13 +318,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleShortcut)
   }, [])
 
-  useEffect(() => {
-    void WorkspaceService.ListEnvironments().then((loaded) => {
-      const next = loaded && Object.keys(loaded).length > 0 ? loaded : { Dev: {} }
-      setEnvironments(next)
-      setActiveEnvironment((current) => next[current] ? current : Object.keys(next)[0])
-    }).catch((error) => console.error('Unable to load environments', error))
-  }, [])
+  useEffect(() => { void loadEnvironmentSets() }, [loadEnvironmentSets])
 
   useEffect(() => {
     void WorkspaceService.LoadSettings().then((stored) => {
@@ -496,10 +518,18 @@ export default function App() {
     })
   }
 
+  const saveGlobalEnvironments = (next: Environments) => {
+    setGlobalEnvironments(next)
+    void WorkspaceService.SaveGlobalEnvironments(next).catch((error) => {
+      console.error('Unable to save global environments', error)
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to save global environments.')
+    })
+  }
+
   const loadDotEnv = async () => {
     try {
       const dotenv = await WorkspaceService.LoadDotEnv()
-      saveEnvironments({ ...environments, [activeEnvironment]: dotenv })
+      saveEnvironments({ ...environments, [activeEnvironment]: normalizeEnvironmentValues(dotenv) })
     } catch (error) {
       console.error('Unable to load .env', error)
       setErrorMessage(error instanceof Error ? error.message : 'Unable to load .env.')
@@ -669,16 +699,18 @@ export default function App() {
           '--sidebar-accent': palette.sidebarAccent,
         } as CSSProperties}
       >
-      <header
-        className="relative flex h-9 shrink-0 items-center justify-center border-b"
-        style={{ '--wails-draggable': 'drag' } as CSSProperties}
-        onDoubleClick={() => void Window.ToggleMaximise()}
-      >
-        <div className="flex items-center gap-2 text-sm font-medium">
-          <img src="/appicon.svg" alt="" className="size-5 rounded-md" />
-          CurlDesk
-        </div>
-      </header>
+      {isMacOS && (
+        <header
+          className="relative flex h-9 shrink-0 items-center justify-center border-b"
+          style={{ '--wails-draggable': 'drag' } as CSSProperties}
+          onDoubleClick={() => void Window.ToggleMaximise()}
+        >
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <img src="/appicon.svg" alt="" className="size-5 rounded-md" />
+            CurlDesk
+          </div>
+        </header>
+      )}
 
       {errorMessage && (
         <Alert className="pointer-events-auto fixed bottom-10 right-4 z-[80] max-w-sm border-destructive/30 bg-background text-destructive shadow-lg">
@@ -925,17 +957,18 @@ export default function App() {
       </div>
 
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="h-[560px] max-w-[820px] gap-0 overflow-hidden p-0">
+        <DialogContent className="h-[620px] max-w-[900px] gap-0 overflow-hidden p-0">
           <DialogTitle className="sr-only">Settings</DialogTitle>
           <DialogDescription className="sr-only">Customize editor and request workspace preferences.</DialogDescription>
           <SidebarProvider className="items-start">
-            <Sidebar collapsible="none" className="hidden w-48 shrink-0 border-r md:flex">
-              <SidebarContent>
-                <SidebarGroup>
+            <Sidebar collapsible="none" className="hidden w-52 shrink-0 border-r bg-muted/20 md:flex">
+              <SidebarContent className="gap-1 px-2 py-3">
+                <SidebarGroup className="p-0">
                   <SidebarGroupContent>
-                    <SidebarMenu>
+                    <SidebarMenu className="gap-1">
                       <SidebarMenuItem>
                         <SidebarMenuButton
+                          className="h-9 rounded-md px-3 text-sm data-[active=true]:bg-muted data-[active=true]:font-medium data-[active=true]:text-foreground"
                           isActive={settingsSection === 'general'}
                           onClick={() => setSettingsSection('general')}
                         >
@@ -945,6 +978,7 @@ export default function App() {
                       </SidebarMenuItem>
                       <SidebarMenuItem>
                         <SidebarMenuButton
+                          className="h-9 rounded-md px-3 text-sm data-[active=true]:bg-muted data-[active=true]:font-medium data-[active=true]:text-foreground"
                           isActive={settingsSection === 'editor'}
                           onClick={() => setSettingsSection('editor')}
                         >
@@ -954,6 +988,7 @@ export default function App() {
                       </SidebarMenuItem>
                       <SidebarMenuItem>
                         <SidebarMenuButton
+                          className="h-9 rounded-md px-3 text-sm data-[active=true]:bg-muted data-[active=true]:font-medium data-[active=true]:text-foreground"
                           isActive={settingsSection === 'environment'}
                           onClick={() => setSettingsSection('environment')}
                         >
@@ -966,38 +1001,32 @@ export default function App() {
                 </SidebarGroup>
               </SidebarContent>
             </Sidebar>
-            <main className="flex h-[560px] min-w-0 flex-1 flex-col overflow-hidden">
-              <header className="flex h-16 shrink-0 items-center gap-2 border-b px-6 pr-14">
-                <div>
-                  <h2 className="text-lg font-semibold">Settings</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">Customize editor and request workspace preferences.</p>
-                </div>
-              </header>
-              <section className="min-h-0 flex-1 overflow-y-auto p-6">
+            <main className="flex h-[620px] min-w-0 flex-1 flex-col overflow-hidden">
+              <section className="min-h-0 flex-1 overflow-y-auto px-8 py-7 pr-12">
               {settingsSection === 'general' && (
-                <div className="space-y-5">
+                <div className="space-y-6">
                   <div>
-                    <h3 className="text-base font-semibold">General</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">Manage basic CurlDesk workspace behavior.</p>
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">General settings</h3>
+                    <p className="mt-2 text-sm text-muted-foreground">Manage basic CurlDesk workspace behavior.</p>
                   </div>
-                  <div className="flex items-start justify-between gap-4 rounded-md border p-4">
+                  <div className="flex items-center justify-between gap-4 py-1">
                     <span>
-                      <span className="block text-sm font-medium">Auto-save</span>
+                      <span className="block text-sm">Enable auto-save</span>
                       <span className="mt-1 block text-xs text-muted-foreground">Automatically save curl content to the local workspace.</span>
                     </span>
                     <Button
-                      variant={settings.autoSave ? 'secondary' : 'outline'}
-                      size="sm"
-                      className="min-w-16"
+                      variant="outline"
+                      size="icon"
+                      className={`size-5 shrink-0 rounded-sm p-0 ${settings.autoSave ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground' : ''}`}
                       aria-pressed={settings.autoSave}
                       onClick={() => setSettings((current) => ({ ...current, autoSave: !current.autoSave }))}
                     >
-                      {settings.autoSave ? 'Enabled' : 'Disabled'}
+                      {settings.autoSave && <Check className="size-3.5" />}
                     </Button>
                   </div>
-                  <div className="flex items-center justify-between gap-4 rounded-md border p-4">
+                  <div className="flex items-center justify-between gap-4 py-1">
                     <span>
-                      <span className="block text-sm font-medium">Accent color</span>
+                      <span className="block text-sm">Accent color</span>
                       <span className="mt-1 block text-xs text-muted-foreground">Choose the primary color for CurlDesk.</span>
                     </span>
                     <div className="flex items-center gap-2 text-sm">
@@ -1005,9 +1034,9 @@ export default function App() {
                       {theme.label}
                     </div>
                   </div>
-                  <div className="space-y-2 rounded-md border p-4">
+                  <div className="space-y-2 py-1">
                     <div>
-                      <span className="block text-sm font-medium">curl executable</span>
+                      <span className="block text-sm">curl executable</span>
                       <span className="mt-1 block text-xs text-muted-foreground">Leave empty to use curl from the system PATH.</span>
                     </div>
                     <Input
@@ -1017,9 +1046,9 @@ export default function App() {
                       onChange={(event) => setSettings((current) => ({ ...current, curlPath: event.target.value }))}
                     />
                   </div>
-                  <div className="space-y-2 rounded-md border p-4">
+                  <div className="space-y-2 py-1">
                     <div>
-                      <span className="block text-sm font-medium">Request timeout</span>
+                      <span className="block text-sm">Request timeout</span>
                       <span className="mt-1 block text-xs text-muted-foreground">Set milliseconds, or 0 for no application timeout.</span>
                     </div>
                     <Input
@@ -1034,14 +1063,14 @@ export default function App() {
                 </div>
               )}
               {settingsSection === 'editor' && (
-                <div className="space-y-5">
+                <div className="space-y-6">
                   <div>
-                    <h3 className="text-base font-semibold">Editor</h3>
-                    <p className="mt-1 text-sm text-muted-foreground">Adjust how request and response content is displayed.</p>
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Editor settings</h3>
+                    <p className="mt-2 text-sm text-muted-foreground">Adjust how request and response content is displayed.</p>
                   </div>
-                  <div className="flex items-center justify-between gap-4 rounded-md border p-4">
+                  <div className="flex items-center justify-between gap-4 py-1">
                     <span>
-                      <span className="block text-sm font-medium">Editor font size</span>
+                      <span className="block text-sm">Editor font size</span>
                       <span className="mt-1 block text-xs text-muted-foreground">Applied to both request and output editors.</span>
                     </span>
                     <div className="flex items-center gap-1">
@@ -1059,29 +1088,31 @@ export default function App() {
                       ))}
                     </div>
                   </div>
-                  <div className="flex items-start justify-between gap-4 rounded-md border p-4">
+                  <div className="flex items-center justify-between gap-4 py-1">
                     <span>
-                      <span className="block text-sm font-medium">Wrap output</span>
+                      <span className="block text-sm">Wrap output</span>
                       <span className="mt-1 block text-xs text-muted-foreground">Wrap long response content to fit the current panel.</span>
                     </span>
                     <Button
-                      variant={settings.wrapOutput ? 'secondary' : 'outline'}
-                      size="sm"
-                      className="min-w-16"
+                      variant="outline"
+                      size="icon"
+                      className={`size-5 shrink-0 rounded-sm p-0 ${settings.wrapOutput ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground' : ''}`}
                       aria-pressed={settings.wrapOutput}
                       onClick={() => setSettings((current) => ({ ...current, wrapOutput: !current.wrapOutput }))}
                     >
-                      {settings.wrapOutput ? 'Enabled' : 'Disabled'}
+                      {settings.wrapOutput && <Check className="size-3.5" />}
                     </Button>
                   </div>
                 </div>
               )}
               {settingsSection === 'environment' && (
                 <EnvironmentEditor
-                  environments={environments}
+                  workspaceEnvironments={environments}
+                  globalEnvironments={globalEnvironments}
                   activeEnvironment={activeEnvironment}
                   onSelectEnvironment={setActiveEnvironment}
-                  onChange={saveEnvironments}
+                  onWorkspaceChange={saveEnvironments}
+                  onGlobalChange={saveGlobalEnvironments}
                   onLoadDotEnv={() => void loadDotEnv()}
                   onSaveDotEnv={() => void saveDotEnv()}
                 />
@@ -1134,7 +1165,7 @@ export default function App() {
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground" aria-label={`Switch environment, current ${activeEnvironment}`}>
+                <Button variant="ghost" size="sm" className={statusBarActionClass} aria-label={`Switch environment, current ${activeEnvironment}`}>
                   Environment: {activeEnvironment}
                 </Button>
               </DropdownMenuTrigger>
@@ -1155,21 +1186,21 @@ export default function App() {
         <Separator orientation="vertical" className="h-3" />
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground" aria-label="Request history" onClick={() => setHistoryOpen(true)}>History</Button>
+            <Button variant="ghost" size="sm" className={statusBarActionClass} aria-label="Request history" onClick={() => setHistoryOpen(true)}>History</Button>
           </TooltipTrigger>
           <TooltipContent side="top">Request history</TooltipContent>
         </Tooltip>
         <Separator orientation="vertical" className="h-3" />
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground" aria-label="Open command palette" onClick={() => setCommandPaletteOpen(true)}>Commands</Button>
+            <Button variant="ghost" size="sm" className={statusBarActionClass} aria-label="Open command palette" onClick={() => setCommandPaletteOpen(true)}>Commands</Button>
           </TooltipTrigger>
           <TooltipContent side="top">Command palette (⌘K / Ctrl+K)</TooltipContent>
         </Tooltip>
         <Separator orientation="vertical" className="h-3" />
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground" aria-label="Open diagnostics" onClick={() => setDiagnosticsOpen(true)}>Diagnostics</Button>
+            <Button variant="ghost" size="sm" className={statusBarActionClass} aria-label="Open diagnostics" onClick={() => setDiagnosticsOpen(true)}>Diagnostics</Button>
           </TooltipTrigger>
           <TooltipContent side="top">Open diagnostics</TooltipContent>
         </Tooltip>
@@ -1179,7 +1210,7 @@ export default function App() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+              className={statusBarActionClass}
               aria-label="Check for updates"
               onClick={() => void checkForUpdates()}
             >
@@ -1193,7 +1224,7 @@ export default function App() {
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-6 gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground" aria-label={`Theme, current ${theme.label}`}>
+                <Button variant="ghost" size="sm" className={`${statusBarActionClass} gap-1`} aria-label={`Theme, current ${theme.label}`}>
                   <Palette className="size-3.5" />
                   <span>Theme: {theme.label}</span>
                 </Button>
@@ -1237,7 +1268,7 @@ export default function App() {
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+              className={`${statusBarActionClass} gap-1`}
               aria-label="Settings"
               onClick={() => setSettingsOpen(true)}
             >
@@ -1257,7 +1288,7 @@ export default function App() {
                 event.preventDefault()
                 void Browser.OpenURL('https://github.com/FearlessPeople/curldesk')
               }}
-              className="flex items-center gap-1 hover:text-foreground"
+              className={`${statusBarActionClass} flex items-center gap-1`}
             >
               <Github className="size-3.5" /> GitHub
             </a>
