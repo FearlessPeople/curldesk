@@ -23,13 +23,21 @@ type curlStreamChunk struct {
 }
 
 type RunResult struct {
-	Output          string `json:"output"`
-	ExitCode        int    `json:"exitCode"`
-	Status          int    `json:"status"`
-	DurationMs      int64  `json:"durationMs"`
-	RequestSize     int64  `json:"requestSize"`
-	ResponseSize    int64  `json:"responseSize"`
-	ResponseHeaders string `json:"responseHeaders"`
+	Output            string `json:"output"`
+	ExitCode          int    `json:"exitCode"`
+	Status            int    `json:"status"`
+	DurationMs        int64  `json:"durationMs"`
+	RequestSize       int64  `json:"requestSize"`
+	ResponseSize      int64  `json:"responseSize"`
+	ResponseHeaders   string `json:"responseHeaders"`
+	RequestHeaders    string `json:"requestHeaders"`
+	DNSDurationMs     int64  `json:"dnsDurationMs"`
+	ConnectDurationMs int64  `json:"connectDurationMs"`
+	TLSDurationMs     int64  `json:"tlsDurationMs"`
+	TTFBMs            int64  `json:"ttfbMs"`
+	RemoteIP          string `json:"remoteIp"`
+	HTTPVersion       string `json:"httpVersion"`
+	Redirects         int    `json:"redirects"`
 }
 
 type CurlDiagnostic struct {
@@ -63,12 +71,13 @@ func (r *CurlRunner) runCurl(command, runID string) (RunResult, error) {
 		log.Printf("[curl] rejected request: %v", err)
 		return RunResult{}, err
 	}
+	requestHeaders := formatRequestHeaders(args)
 	// The progress meter is written to stderr and is noisy when rendered in
 	// the Output panel. Keep curl errors visible while hiding that meter.
 	args = append(args,
 		"--silent", "--show-error",
 		"--dump-header", "-",
-		"--write-out", "\n__CURLDESK_META__%{http_code}|%{time_total}|%{size_request}|%{size_download}",
+		"--write-out", "\n__CURLDESK_META__%{http_code}|%{time_total}|%{size_request}|%{size_download}|%{time_namelookup}|%{time_connect}|%{time_appconnect}|%{time_starttransfer}|%{remote_ip}|%{http_version}|%{num_redirects}",
 	)
 
 	ctx, cancel := r.commandContext()
@@ -84,7 +93,8 @@ func (r *CurlRunner) runCurl(command, runID string) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("curl executable not found: %w", err)
 	}
 	result := RunResult{ExitCode: cmd.ProcessState.ExitCode()}
-	result.Output, result.ResponseHeaders, result.Status, result.DurationMs, result.RequestSize, result.ResponseSize = parseCurlOutput(stdout.String())
+	result.RequestHeaders = requestHeaders
+	result.Output, result.ResponseHeaders, result.Status, result.DurationMs, result.RequestSize, result.ResponseSize, result.DNSDurationMs, result.ConnectDurationMs, result.TLSDurationMs, result.TTFBMs, result.RemoteIP, result.HTTPVersion, result.Redirects = parseCurlOutput(stdout.String())
 	if result.ExitCode != 0 && stderr.Len() > 0 {
 		result.Output = strings.TrimSpace(result.Output + "\n" + stderr.String())
 	}
@@ -98,6 +108,7 @@ func (r *CurlRunner) RunCurlStream(command, runID string) (RunResult, error) {
 	if err != nil {
 		return RunResult{}, err
 	}
+	requestHeaders := formatRequestHeaders(args)
 	headerFile, err := os.CreateTemp("", "curldesk-response-*.headers")
 	if err != nil {
 		return RunResult{}, fmt.Errorf("create response header file: %w", err)
@@ -115,7 +126,7 @@ func (r *CurlRunner) RunCurlStream(command, runID string) (RunResult, error) {
 		// Keep curl's bookkeeping off stdout. SSE data must be forwarded byte-for-byte
 		// as soon as curl receives it; a write-out marker on stdout would otherwise
 		// force the stream writer to hold a suffix while looking for that marker.
-		"--write-out", "%{stderr}__CURLDESK_META__%{http_code}|%{time_total}|%{size_request}|%{size_download}",
+		"--write-out", "%{stderr}__CURLDESK_META__%{http_code}|%{time_total}|%{size_request}|%{size_download}|%{time_namelookup}|%{time_connect}|%{time_appconnect}|%{time_starttransfer}|%{remote_ip}|%{http_version}|%{num_redirects}",
 	)
 	ctx, cancel := r.commandContext()
 	defer cancel()
@@ -133,8 +144,9 @@ func (r *CurlRunner) RunCurlStream(command, runID string) (RunResult, error) {
 	}
 
 	result := RunResult{ExitCode: cmd.ProcessState.ExitCode()}
+	result.RequestHeaders = requestHeaders
 	result.Output = stdout.String()
-	result.Status, result.DurationMs, result.RequestSize, result.ResponseSize = parseCurlMetadata(stderr.String())
+	result.Status, result.DurationMs, result.RequestSize, result.ResponseSize, result.DNSDurationMs, result.ConnectDurationMs, result.TLSDurationMs, result.TTFBMs, result.RemoteIP, result.HTTPVersion, result.Redirects = parseCurlMetadata(stderr.String())
 	if headers, readErr := os.ReadFile(headerPath); readErr == nil {
 		result.ResponseHeaders = string(headers)
 	}
@@ -164,23 +176,73 @@ func (w *curlStreamWriter) emit(chunk string) {
 	application.Get().Event.Emit(curlStreamEvent, curlStreamChunk{RunID: w.runID, Chunk: chunk})
 }
 
-func parseCurlMetadata(output string) (status int, durationMs, requestSize, responseSize int64) {
+func parseCurlMetadata(output string) (status int, durationMs, requestSize, responseSize, dnsDurationMs, connectDurationMs, tlsDurationMs, ttfbMs int64, remoteIP, httpVersion string, redirects int) {
 	const marker = "__CURLDESK_META__"
 	markerIndex := strings.LastIndex(output, marker)
 	if markerIndex == -1 {
-		return 0, 0, 0, 0
+		return 0, 0, 0, 0, 0, 0, 0, 0, "", "", 0
 	}
 	metadata := strings.Split(strings.TrimSpace(output[markerIndex+len(marker):]), "|")
-	if len(metadata) != 4 {
-		return 0, 0, 0, 0
+	if len(metadata) != 11 {
+		return 0, 0, 0, 0, 0, 0, 0, 0, "", "", 0
 	}
 	fmt.Sscanf(metadata[0], "%d", &status)
-	var seconds float64
-	fmt.Sscanf(metadata[1], "%f", &seconds)
-	durationMs = int64(seconds*1000 + 0.5)
+	durationMs = secondsToMilliseconds(metadata[1])
 	fmt.Sscanf(metadata[2], "%d", &requestSize)
 	fmt.Sscanf(metadata[3], "%d", &responseSize)
-	return status, durationMs, requestSize, responseSize
+	dnsDurationMs = secondsToMilliseconds(metadata[4])
+	connectDurationMs = secondsToMilliseconds(metadata[5])
+	tlsDurationMs = secondsToMilliseconds(metadata[6])
+	ttfbMs = secondsToMilliseconds(metadata[7])
+	remoteIP = metadata[8]
+	httpVersion = metadata[9]
+	fmt.Sscanf(metadata[10], "%d", &redirects)
+	return status, durationMs, requestSize, responseSize, dnsDurationMs, connectDurationMs, tlsDurationMs, ttfbMs, remoteIP, httpVersion, redirects
+}
+
+func secondsToMilliseconds(value string) int64 {
+	var seconds float64
+	fmt.Sscanf(value, "%f", &seconds)
+	return int64(seconds*1000 + 0.5)
+}
+
+func formatRequestHeaders(args []string) string {
+	var headers []string
+	for index := 0; index < len(args); index++ {
+		value := ""
+		if args[index] == "-H" || args[index] == "--header" {
+			if index+1 < len(args) {
+				index++
+				value = args[index]
+			}
+		} else if strings.HasPrefix(args[index], "--header=") {
+			value = strings.TrimPrefix(args[index], "--header=")
+		} else if strings.HasPrefix(args[index], "-H") && len(args[index]) > 2 {
+			value = args[index][2:]
+		}
+		if value != "" {
+			headers = append(headers, maskRequestHeader(value))
+		}
+	}
+	if len(headers) == 0 {
+		return "No explicit request headers."
+	}
+	return strings.Join(headers, "\n")
+}
+
+func maskRequestHeader(header string) string {
+	separator := strings.IndexByte(header, ':')
+	if separator < 0 {
+		return header
+	}
+	name := strings.TrimSpace(header[:separator])
+	lowerName := strings.ToLower(name)
+	for _, sensitive := range []string{"authorization", "proxy-authorization", "cookie", "set-cookie", "x-api-key", "api-key", "token"} {
+		if lowerName == sensitive || strings.Contains(lowerName, sensitive) {
+			return name + ": <redacted>"
+		}
+	}
+	return header
 }
 
 func stripCurlMetadata(output string) string {
@@ -229,26 +291,31 @@ func (r *CurlRunner) clearProcess(runID string, cmd *exec.Cmd) {
 	r.mu.Unlock()
 }
 
-func parseCurlOutput(output string) (body, headers string, status int, durationMs, requestSize, responseSize int64) {
+func parseCurlOutput(output string) (body, headers string, status int, durationMs, requestSize, responseSize, dnsDurationMs, connectDurationMs, tlsDurationMs, ttfbMs int64, remoteIP, httpVersion string, redirects int) {
 	const marker = "__CURLDESK_META__"
 	markerIndex := strings.LastIndex(output, marker)
 	if markerIndex == -1 {
-		return output, "", 0, 0, 0, 0
+		return output, "", 0, 0, 0, 0, 0, 0, 0, 0, "", "", 0
 	}
 
 	payload := strings.TrimSuffix(output[:markerIndex], "\n")
 	metadata := strings.Split(strings.TrimSpace(output[markerIndex+len(marker):]), "|")
-	if len(metadata) == 4 {
+	if len(metadata) == 11 {
 		fmt.Sscanf(metadata[0], "%d", &status)
-		var seconds float64
-		fmt.Sscanf(metadata[1], "%f", &seconds)
-		durationMs = int64(seconds*1000 + 0.5)
+		durationMs = secondsToMilliseconds(metadata[1])
 		fmt.Sscanf(metadata[2], "%d", &requestSize)
 		fmt.Sscanf(metadata[3], "%d", &responseSize)
+		dnsDurationMs = secondsToMilliseconds(metadata[4])
+		connectDurationMs = secondsToMilliseconds(metadata[5])
+		tlsDurationMs = secondsToMilliseconds(metadata[6])
+		ttfbMs = secondsToMilliseconds(metadata[7])
+		remoteIP = metadata[8]
+		httpVersion = metadata[9]
+		fmt.Sscanf(metadata[10], "%d", &redirects)
 	}
 
 	headers, body = splitResponseHeaders(payload)
-	return body, headers, status, durationMs, requestSize, responseSize
+	return body, headers, status, durationMs, requestSize, responseSize, dnsDurationMs, connectDurationMs, tlsDurationMs, ttfbMs, remoteIP, httpVersion, redirects
 }
 
 func splitResponseHeaders(output string) (headers, body string) {

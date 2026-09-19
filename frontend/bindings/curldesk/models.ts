@@ -41,6 +41,14 @@ export interface RunResult {
     "requestSize": number;
     "responseSize": number;
     "responseHeaders": string;
+    "requestHeaders": string;
+    "dnsDurationMs": number;
+    "connectDurationMs": number;
+    "tlsDurationMs": number;
+    "ttfbMs": number;
+    "remoteIp": string;
+    "httpVersion": string;
+    "redirects": number;
 }
 
 export interface WorkspaceEntry {

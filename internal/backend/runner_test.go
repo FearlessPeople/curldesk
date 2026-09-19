@@ -43,8 +43,8 @@ func TestParseCurlCommandIgnoresShellComments(t *testing.T) {
 }
 
 func TestParseCurlOutput(t *testing.T) {
-	output := "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true}\n__CURLDESK_META__200|0.125|84|11"
-	body, headers, status, durationMs, requestSize, responseSize := parseCurlOutput(output)
+	output := "HTTP/2 200\r\ncontent-type: application/json\r\n\r\n{\"ok\":true}\n__CURLDESK_META__200|0.125|84|11|0.010|0.020|0.030|0.040|192.0.2.1|2|1"
+	body, headers, status, durationMs, requestSize, responseSize, dnsMs, connectMs, tlsMs, ttfbMs, remoteIP, httpVersion, redirects := parseCurlOutput(output)
 	if body != "{\"ok\":true}" {
 		t.Errorf("body = %q", body)
 	}
@@ -53,6 +53,9 @@ func TestParseCurlOutput(t *testing.T) {
 	}
 	if status != 200 || durationMs != 125 || requestSize != 84 || responseSize != 11 {
 		t.Errorf("metadata = %d, %d, %d, %d", status, durationMs, requestSize, responseSize)
+	}
+	if dnsMs != 10 || connectMs != 20 || tlsMs != 30 || ttfbMs != 40 || remoteIP != "192.0.2.1" || httpVersion != "2" || redirects != 1 {
+		t.Errorf("timing metadata = %d, %d, %d, %d, %q, %q, %d", dnsMs, connectMs, tlsMs, ttfbMs, remoteIP, httpVersion, redirects)
 	}
 }
 
@@ -68,9 +71,20 @@ func TestCurlStreamWriterEmitsSmallChunksImmediately(t *testing.T) {
 }
 
 func TestParseCurlMetadata(t *testing.T) {
-	status, durationMs, requestSize, responseSize := parseCurlMetadata("__CURLDESK_META__200|0.125|84|11")
+	status, durationMs, requestSize, responseSize, dnsMs, connectMs, tlsMs, ttfbMs, remoteIP, httpVersion, redirects := parseCurlMetadata("__CURLDESK_META__200|0.125|84|11|0.010|0.020|0.030|0.040|192.0.2.1|2|1")
 	if status != 200 || durationMs != 125 || requestSize != 84 || responseSize != 11 {
 		t.Fatalf("metadata = %d, %d, %d, %d", status, durationMs, requestSize, responseSize)
+	}
+	if dnsMs != 10 || connectMs != 20 || tlsMs != 30 || ttfbMs != 40 || remoteIP != "192.0.2.1" || httpVersion != "2" || redirects != 1 {
+		t.Fatalf("timing metadata = %d, %d, %d, %d, %q, %q, %d", dnsMs, connectMs, tlsMs, ttfbMs, remoteIP, httpVersion, redirects)
+	}
+}
+
+func TestFormatRequestHeadersMasksSecrets(t *testing.T) {
+	got := formatRequestHeaders([]string{"-H", "Accept: application/json", "--header", "Authorization: Bearer secret", "--header=X-Api-Key: abc", "-HCookie: session=secret"})
+	want := "Accept: application/json\nAuthorization: <redacted>\nX-Api-Key: <redacted>\nCookie: <redacted>"
+	if got != want {
+		t.Fatalf("headers = %q, want %q", got, want)
 	}
 }
 

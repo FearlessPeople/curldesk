@@ -11,8 +11,9 @@ import { Alert } from '@/components/alert'
 import { CurlEditor } from '@/components/curl-editor'
 import { OutputEditor } from '@/components/output-editor'
 import { EnvironmentEditor } from '@/features/environment/environment-editor'
-import { HistoryDialog } from '@/features/history/history-dialog'
-import { DiagnosticsDialog } from '@/features/diagnostics/diagnostics-dialog'
+import { HistoryPage } from '@/features/history/history-page'
+import { DiagnosticsPage } from '@/features/diagnostics/diagnostics-page'
+import { SettingsPage } from '@/features/settings/settings-page'
 import { CommandPalette, type PaletteCommand } from '@/features/command-palette/command-palette'
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from '@/components/sidebar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/tabs'
@@ -44,12 +45,13 @@ type AppSettings = {
 
 type ThemeColor = 'blue' | 'violet' | 'emerald' | 'orange' | 'rose'
 type Appearance = 'light' | 'dark' | 'system'
+type PageRoute = 'settings' | 'history' | 'diagnostics'
 type Environments = Record<string, Record<string, string>>
 type GeneratedEnvironmentValues = Record<string, string | undefined> | null | undefined
 type GeneratedEnvironments = Record<string, GeneratedEnvironmentValues> | null | undefined
 type RequestResult = {
   output: string
-  runInfo: { status: number; durationMs: number; requestSize: number; responseSize: number; headers: string } | null
+  runInfo: { status: number; durationMs: number; requestSize: number; responseSize: number; headers: string; requestHeaders: string; dnsDurationMs: number; connectDurationMs: number; tlsDurationMs: number; ttfbMs: number; remoteIp: string; httpVersion: string; redirects: number } | null
   runStatus: 'ready' | 'running' | 'failed'
   runID?: string
   runningLine?: number | null
@@ -193,7 +195,6 @@ function isNewerVersion(latest: string, current: string) {
 
 export default function App() {
   const [layout, setLayout] = useState<'vertical' | 'horizontal'>('vertical')
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [booting, setBooting] = useState(true)
   const [updateOpen, setUpdateOpen] = useState(false)
   const [updateState, setUpdateState] = useState<'checking' | 'latest' | 'available' | 'error'>('checking')
@@ -212,17 +213,17 @@ export default function App() {
   const [requests, setRequests] = useState<{ value: string; label: string; command: string; dirty?: boolean; pinned?: boolean }[]>([])
   const [activeRequest, setActiveRequest] = useState('')
   const [copiedOutput, setCopiedOutput] = useState(false)
-  const [outputView, setOutputView] = useState<'response' | 'headers'>('response')
+  const [outputView, setOutputView] = useState<'response' | 'headers' | 'request'>('response')
   const [responseFormat, setResponseFormat] = useState<'pretty' | 'raw'>('pretty')
   const [outputSearch, setOutputSearch] = useState('')
   const [collapseOutputSignal, setCollapseOutputSignal] = useState(0)
-  const [historyOpen, setHistoryOpen] = useState(false)
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([])
-  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [diagnostics, setDiagnostics] = useState<DiagnosticInfo | null>(null)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [requestResults, setRequestResults] = useState<Record<string, RequestResult>>({})
   const [errorMessage, setErrorMessage] = useState('')
+  const [openPages, setOpenPages] = useState<PageRoute[]>([])
+  const [activePage, setActivePage] = useState<PageRoute | null>(null)
   const activeStreams = useRef<Record<string, string>>({})
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -234,11 +235,37 @@ export default function App() {
   const runningLine = activeResult?.runningLine ?? null
   const displayOutput = outputView === 'response'
     ? formatOutput(runOutput || 'Run a curl command to see output here.', responseFormat === 'pretty' && isJsonResponse(runOutput, runInfo?.headers || ''))
-    : (runInfo?.headers || 'No response headers yet.')
+    : outputView === 'headers'
+      ? (runInfo?.headers || 'No response headers yet.')
+      : (runInfo?.requestHeaders || 'No explicit request headers.')
   const responseContentType = headerValue(runInfo?.headers || '', 'content-type') || (runOutput ? 'text/plain' : '—')
+  const activeTab = activePage ? `page:${activePage}` : activeRequest
+
+  const openPage = (page: PageRoute) => {
+    setOpenPages((current) => current.includes(page) ? current : [...current, page])
+    setActivePage(page)
+  }
+
+  const closePage = (page: PageRoute) => {
+    const nextPages = openPages.filter((current) => current !== page)
+    setOpenPages(nextPages)
+    if (activePage !== page) return
+    const nextPage = nextPages[nextPages.length - 1] || null
+    setActivePage(nextPage)
+    if (!nextPage && requests.length > 0) setActiveRequest((current) => current || requests[0].value)
+  }
+
+  const selectTab = (value: string) => {
+    if (value.startsWith('page:')) {
+      setActivePage(value.slice(5) as PageRoute)
+      return
+    }
+    setActivePage(null)
+    setActiveRequest(value)
+  }
 
   const copyOutput = async () => {
-    if (!runOutput) return
+    if (!activeResult || !displayOutput || displayOutput.startsWith('No ') || displayOutput.startsWith('Run a curl')) return
     try {
       await navigator.clipboard.writeText(displayOutput)
       setCopiedOutput(true)
@@ -250,7 +277,7 @@ export default function App() {
   }
 
   const downloadOutput = () => {
-    if (!runOutput) return
+    if (!activeResult || !displayOutput || displayOutput.startsWith('No ') || displayOutput.startsWith('Run a curl')) return
     const blob = new Blob([displayOutput], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -313,10 +340,18 @@ export default function App() {
         event.preventDefault()
         setCommandPaletteOpen(true)
       }
+      if ((event.metaKey || event.ctrlKey) && (event.key === 'PageUp' || event.key === 'PageDown')) {
+        event.preventDefault()
+        switchRequestTab(event.key === 'PageUp' ? -1 : 1)
+      }
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === '[' || event.key === ']')) {
+        event.preventDefault()
+        switchRequestTab(event.key === '[' ? -1 : 1)
+      }
     }
     window.addEventListener('keydown', handleShortcut)
     return () => window.removeEventListener('keydown', handleShortcut)
-  }, [])
+  }, [activeRequest, requests])
 
   useEffect(() => { void loadEnvironmentSets() }, [loadEnvironmentSets])
 
@@ -493,6 +528,13 @@ export default function App() {
     setRequestResults({})
   }
 
+  const switchRequestTab = (offset: number) => {
+    if (requests.length < 2) return
+    const currentIndex = Math.max(0, requests.findIndex((request) => request.value === activeRequest))
+    const nextIndex = (currentIndex + offset + requests.length) % requests.length
+    setActiveRequest(requests[nextIndex].value)
+  }
+
   const updateCommand = (value: string, command: string) => {
     setRequests((current) => current.map((request) => request.value === value ? { ...request, command, dirty: true } : request))
     if (!/\.curl$/i.test(value)) return
@@ -606,6 +648,14 @@ export default function App() {
         requestSize: result.requestSize,
         responseSize: result.responseSize,
         headers: result.responseHeaders,
+        requestHeaders: result.requestHeaders,
+        dnsDurationMs: result.dnsDurationMs,
+        connectDurationMs: result.connectDurationMs,
+        tlsDurationMs: result.tlsDurationMs,
+        ttfbMs: result.ttfbMs,
+        remoteIp: result.remoteIp,
+        httpVersion: result.httpVersion,
+        redirects: result.redirects,
       }
       setRequestResults((current) => {
         const existing = current[filePath]
@@ -670,12 +720,14 @@ export default function App() {
         if (!active) return
         void WorkspaceService.SaveFile(active.value, active.command).then(() => setRequests((current) => current.map((request) => request.value === active.value ? { ...request, dirty: false } : request)))
       } },
-      { id: 'history', label: 'Open request history', description: 'Search previous local curl runs', onSelect: () => setHistoryOpen(true) },
-      { id: 'diagnostics', label: 'Open diagnostics', description: 'Inspect curl and platform information', onSelect: () => setDiagnosticsOpen(true) },
-      { id: 'environment', label: 'Switch environment', description: 'Open environment settings', onSelect: () => { setSettingsSection('environment'); setSettingsOpen(true) } },
+      { id: 'history', label: 'Open request history', description: 'Search previous local curl runs', onSelect: () => openPage('history') },
+      { id: 'diagnostics', label: 'Open diagnostics', description: 'Inspect curl and platform information', onSelect: () => openPage('diagnostics') },
+      { id: 'environment', label: 'Switch environment', description: 'Open environment settings', onSelect: () => { setSettingsSection('environment'); openPage('settings') } },
       { id: 'close-tab', label: 'Close current tab', description: 'Close the active request tab', onSelect: () => activeRequest && closeRequest(activeRequest) },
       { id: 'close-others', label: 'Close other tabs', description: 'Keep the active tab and pinned tabs', onSelect: () => activeRequest && closeOtherRequests(activeRequest) },
       { id: 'close-all', label: 'Close all tabs', description: 'Stop running requests and close every tab', onSelect: closeAllRequests },
+      { id: 'next-tab', label: 'Next tab', description: 'Switch to the next request tab', shortcut: '⌘ PageDown', onSelect: () => switchRequestTab(1) },
+      { id: 'previous-tab', label: 'Previous tab', description: 'Switch to the previous request tab', shortcut: '⌘ PageUp', onSelect: () => switchRequestTab(-1) },
     ]
   }, [activeRequest, requests, runRequestBlock])
 
@@ -720,12 +772,26 @@ export default function App() {
 
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <SidebarProvider className="!min-h-0 h-full">
-          <AppSidebar onOpenFile={openFile} workspace={workspace} onWorkspaceChanged={setWorkspace} />
+          <AppSidebar
+            onOpenFile={openFile}
+            workspace={workspace}
+            onWorkspaceChanged={setWorkspace}
+            environments={environments}
+            activeEnvironment={activeEnvironment}
+            onSelectEnvironment={setActiveEnvironment}
+            onManageEnvironments={() => { setSettingsSection('environment'); openPage('settings') }}
+          />
           <SidebarInset>
-            <Tabs value={activeRequest} onValueChange={setActiveRequest} className="flex min-h-0 flex-1 flex-col">
+            <Tabs value={activeTab} onValueChange={selectTab} className="flex min-h-0 flex-1 flex-col">
             <div className="relative flex h-10 shrink-0 items-center gap-2 border-b px-3">
               <SidebarTrigger />
               <TabsList className="!bg-transparent h-8 min-w-0 flex-1 justify-start gap-1 overflow-x-auto p-0 pr-24">
+                {openPages.map((page) => (
+                  <TabsTrigger key={`page:${page}`} value={`page:${page}`} className="group gap-1 px-2 data-[state=active]:ring-1 data-[state=active]:ring-primary/25">
+                    <span>{page === 'settings' ? 'Settings' : page === 'history' ? 'History' : 'Diagnostics'}</span>
+                    <span role="button" tabIndex={0} aria-label={`Close ${page} page`} className="ml-1 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-slate-200 group-hover:opacity-100 group-data-[state=active]:opacity-70 dark:hover:bg-slate-800" onClick={(event) => { event.stopPropagation(); closePage(page) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); closePage(page) } }}><X className="size-3" /></span>
+                  </TabsTrigger>
+                ))}
                 {requests.map((request) => {
                   const method = detectMethod(request.command)
                   return (
@@ -776,7 +842,7 @@ export default function App() {
                   <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
                     <Button size="sm" onClick={() => void createNewCurl()}><FilePlus2 className="size-4" />New curl file</Button>
                     <Button variant="outline" size="sm" onClick={() => setCommandPaletteOpen(true)}>Open commands <kbd className="ml-1 text-[10px] text-muted-foreground">⌘K</kbd></Button>
-                    <Button variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}><Clock3 className="size-4" />History</Button>
+                    <Button variant="ghost" size="sm" onClick={() => openPage('history')}><Clock3 className="size-4" />History</Button>
                   </div>
                 </div>
               </div>
@@ -830,6 +896,19 @@ export default function App() {
                               </TooltipTrigger>
                               <TooltipContent side="top">View response headers</TooltipContent>
                             </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant={outputView === 'request' ? 'secondary' : 'ghost'}
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => setOutputView('request')}
+                                >
+                                  Request
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">View explicit request headers</TooltipContent>
+                            </Tooltip>
                           </div>
                           {outputView === 'response' && isJsonResponse(runOutput, runInfo?.headers || '') && (
                             <div className="flex items-center gap-1">
@@ -868,6 +947,13 @@ export default function App() {
                               <span title="Request size" className="shrink-0">↑ {formatBytes(runInfo.requestSize)}</span>
                               <span title="Response size" className="shrink-0">↓ {formatBytes(runInfo.responseSize)}</span>
                               <span title="Response content type" className="hidden max-w-36 truncate sm:inline">{responseContentType}</span>
+                              <span title="DNS lookup time" className="hidden shrink-0 xl:inline">DNS {runInfo.dnsDurationMs} ms</span>
+                              <span title="TCP connect time" className="hidden shrink-0 xl:inline">Connect {runInfo.connectDurationMs} ms</span>
+                              <span title="TLS handshake time" className="hidden shrink-0 xl:inline">TLS {runInfo.tlsDurationMs} ms</span>
+                              <span title="Time to first byte" className="hidden shrink-0 xl:inline">TTFB {runInfo.ttfbMs} ms</span>
+                              <span title="Negotiated HTTP version" className="hidden shrink-0 xl:inline">HTTP/{runInfo.httpVersion || '—'}</span>
+                              <span title="Remote IP address" className="hidden max-w-28 truncate xl:inline">{runInfo.remoteIp || '—'}</span>
+                              {runInfo.redirects > 0 && <span title="Redirect count" className="hidden shrink-0 xl:inline">↪ {runInfo.redirects}</span>}
                             </div>
                           )}
                           <Tooltip>
@@ -878,7 +964,7 @@ export default function App() {
                                 className="h-7 w-7 shrink-0 rounded-md"
                                 aria-label="Copy output"
                                 onClick={() => void copyOutput()}
-                                disabled={!runOutput}
+                                disabled={!activeResult || !displayOutput || displayOutput.startsWith('No ') || displayOutput.startsWith('Run a curl')}
                               >
                                 {copiedOutput ? <Check /> : <Copy />}
                               </Button>
@@ -893,7 +979,7 @@ export default function App() {
                                 className="h-7 w-7 shrink-0 rounded-md"
                                 aria-label="Download output"
                                 onClick={downloadOutput}
-                                disabled={!runOutput}
+                                disabled={!activeResult || !displayOutput || displayOutput.startsWith('No ') || displayOutput.startsWith('Run a curl')}
                               >
                                 <Download />
                               </Button>
@@ -951,12 +1037,20 @@ export default function App() {
                 </ResizablePanelGroup>
               </TabsContent>
             ))}
+            {openPages.map((page) => (
+              <TabsContent key={`page:${page}`} value={`page:${page}`} className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
+                {page === 'settings' && <SettingsPage settings={settings} onSettingsChange={(update) => setSettings((current) => ({ ...current, ...update }))} section={settingsSection} onSectionChange={setSettingsSection} themeLabel={theme.label} themeSwatch={theme.swatch} environments={environments} globalEnvironments={globalEnvironments} activeEnvironment={activeEnvironment} onSelectEnvironment={setActiveEnvironment} onWorkspaceChange={saveEnvironments} onGlobalChange={saveGlobalEnvironments} onLoadDotEnv={() => void loadDotEnv()} onSaveDotEnv={() => void saveDotEnv()} />}
+                {page === 'history' && <HistoryPage entries={historyEntries} onSearch={searchHistory} onClear={() => void clearHistory()} />}
+                {page === 'diagnostics' && <DiagnosticsPage info={diagnostics} onRefresh={refreshDiagnostics} />}
+              </TabsContent>
+            ))}
             </Tabs>
           </SidebarInset>
         </SidebarProvider>
       </div>
 
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+      {false && (
+        <Dialog>
         <DialogContent className="h-[620px] max-w-[900px] gap-0 overflow-hidden p-0">
           <DialogTitle className="sr-only">Settings</DialogTitle>
           <DialogDescription className="sr-only">Customize editor and request workspace preferences.</DialogDescription>
@@ -1122,6 +1216,7 @@ export default function App() {
           </SidebarProvider>
         </DialogContent>
       </Dialog>
+      )}
 
       <Dialog open={updateOpen} onOpenChange={setUpdateOpen}>
         <DialogContent className="max-w-sm">
@@ -1156,37 +1251,12 @@ export default function App() {
         </DialogContent>
       </Dialog>
 
-      <HistoryDialog open={historyOpen} entries={historyEntries} onOpenChange={setHistoryOpen} onSearch={searchHistory} onClear={() => void clearHistory()} />
-      <DiagnosticsDialog open={diagnosticsOpen} info={diagnostics} onOpenChange={setDiagnosticsOpen} onRefresh={refreshDiagnostics} />
       <CommandPalette open={commandPaletteOpen} commands={paletteCommands} onOpenChange={setCommandPaletteOpen} />
 
         <footer className="flex h-8 shrink-0 items-center gap-3 border-t px-4 text-xs text-muted-foreground">
-        <DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className={statusBarActionClass} aria-label={`Switch environment, current ${activeEnvironment}`}>
-                  Environment: {activeEnvironment}
-                </Button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent side="top">Switch environment</TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent side="top" align="start" className="w-40">
-            {Object.keys(environments).map((name) => (
-              <DropdownMenuItem key={name} onSelect={() => setActiveEnvironment(name)}>
-                <span className="flex-1">{name}</span>
-                {name === activeEnvironment && <Check className="size-3.5" />}
-              </DropdownMenuItem>
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => { setSettingsSection('environment'); setSettingsOpen(true) }}>Manage environments</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Separator orientation="vertical" className="h-3" />
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className={statusBarActionClass} aria-label="Request history" onClick={() => setHistoryOpen(true)}>History</Button>
+            <Button variant="ghost" size="sm" className={statusBarActionClass} aria-label="Request history" onClick={() => openPage('history')}>History</Button>
           </TooltipTrigger>
           <TooltipContent side="top">Request history</TooltipContent>
         </Tooltip>
@@ -1200,7 +1270,7 @@ export default function App() {
         <Separator orientation="vertical" className="h-3" />
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className={statusBarActionClass} aria-label="Open diagnostics" onClick={() => setDiagnosticsOpen(true)}>Diagnostics</Button>
+            <Button variant="ghost" size="sm" className={statusBarActionClass} aria-label="Open diagnostics" onClick={() => openPage('diagnostics')}>Diagnostics</Button>
           </TooltipTrigger>
           <TooltipContent side="top">Open diagnostics</TooltipContent>
         </Tooltip>
@@ -1270,7 +1340,7 @@ export default function App() {
               size="sm"
               className={`${statusBarActionClass} gap-1`}
               aria-label="Settings"
-              onClick={() => setSettingsOpen(true)}
+              onClick={() => openPage('settings')}
             >
               <Settings2 className="size-3.5" />
               <span>Settings</span>

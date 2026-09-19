@@ -246,10 +246,11 @@ CurlDesk 当前已经具备以下基础：
 - [x] `{{VARIABLE}}`
 - [ ] 变量自动补全
 - [x] 缺失变量检查
+- [x] 变量搜索
 - [x] Secret 隐藏
 - [x] Secret 显示
 - [~] Environment Editor
-- [ ] Duplicate Environment
+- [x] Duplicate Environment
 - [ ] Environment Import / Export
 - [x] 系统环境变量引用
 - [x] Workspace 环境变量
@@ -259,17 +260,17 @@ CurlDesk 当前已经具备以下基础：
 
 - [x] HTTP Status 显示
 - [x] Response Headers
-- [ ] Request Headers 展示
+- [x] Request Headers 展示
 - [x] Content-Type 展示
 - [x] Response Size
-- [ ] DNS 耗时
-- [ ] Connect 耗时
-- [ ] TLS 耗时
-- [ ] TTFB
+- [x] DNS 耗时
+- [x] Connect 耗时
+- [x] TLS 耗时
+- [x] TTFB
 - [x] Total Time
-- [ ] Redirect 信息
-- [ ] Remote IP
-- [ ] HTTP Version
+- [x] Redirect 信息
+- [x] Remote IP
+- [x] HTTP Version
 - [ ] TLS 信息
 - [ ] curl verbose 模式
 
@@ -319,7 +320,7 @@ CurlDesk 当前已经具备以下基础：
 - [x] Clear Terminal
 - [ ] Format
 - [x] Close Tab
-- [ ] Next / Previous Tab
+- [x] Next / Previous Tab
 
 ### 16. Tab 系统
 
@@ -414,7 +415,7 @@ CurlDesk 当前已经具备以下基础：
 - [x] 仅执行 curl / curl.exe
 - [~] Secret Mask（编辑器和执行前日志路径已避免主动展示，完整历史/响应脱敏待补）
 - [ ] `.env` Git Ignore
-- [ ] 敏感 Header Mask
+- [x] 敏感 Header Mask
 - [ ] History Secret Mask
 - [ ] Clipboard Secret 提醒
 - [x] Workspace 路径校验（基础能力）

@@ -18,7 +18,7 @@ const outputHighlighting = syntaxHighlighting(HighlightStyle.define([
 
 type OutputEditorProps = {
   value: string
-  mode?: 'response' | 'headers'
+  mode?: 'response' | 'headers' | 'request'
   fontSize?: number
   wrap?: boolean
   loading?: boolean

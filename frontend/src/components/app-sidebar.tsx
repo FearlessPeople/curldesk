@@ -22,7 +22,15 @@ import {
   SidebarRail,
 } from '@/components/sidebar'
 
-type AppSidebarProps = { onOpenFile?: (entry: WorkspaceEntry) => void; workspace: WorkspaceInfo; onWorkspaceChanged: (workspace: WorkspaceInfo) => void }
+type AppSidebarProps = {
+  onOpenFile?: (entry: WorkspaceEntry) => void
+  workspace: WorkspaceInfo
+  onWorkspaceChanged: (workspace: WorkspaceInfo) => void
+  environments: Record<string, Record<string, string>>
+  activeEnvironment: string
+  onSelectEnvironment: (name: string) => void
+  onManageEnvironments: () => void
+}
 type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
 const COLLECTIONS_CHANGED_EVENT = 'curldesk:collections-changed'
 
@@ -47,7 +55,7 @@ function methodColor(method: RequestMethod) {
   return 'text-purple-600 dark:text-purple-400'
 }
 
-export function AppSidebar({ onOpenFile, workspace, onWorkspaceChanged }: AppSidebarProps) {
+export function AppSidebar({ onOpenFile, workspace, onWorkspaceChanged, environments, activeEnvironment, onSelectEnvironment, onManageEnvironments }: AppSidebarProps) {
   const [entries, setEntries] = useState<WorkspaceEntry[]>([])
   const [methods, setMethods] = useState<Record<string, RequestMethod>>({})
   const [createMode, setCreateMode] = useState<'file' | 'folder' | null>(null)
@@ -284,7 +292,29 @@ export function AppSidebar({ onOpenFile, workspace, onWorkspaceChanged }: AppSid
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        <SidebarMenu><SidebarMenuItem><SidebarMenuButton><Folder /><span>ENV</span><span className="ml-auto text-xs text-muted-foreground">Dev</span></SidebarMenuButton></SidebarMenuItem></SidebarMenu>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarMenuButton aria-label={`Switch environment, current ${activeEnvironment}`}>
+                  <Folder />
+                  <span>ENV</span>
+                  <span className="ml-auto truncate text-xs text-muted-foreground">{activeEnvironment}</span>
+                </SidebarMenuButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="right" align="end" className="w-44">
+                {Object.keys(environments).map((name) => (
+                  <DropdownMenuItem key={name} onSelect={() => onSelectEnvironment(name)}>
+                    <span className="flex-1 truncate">{name}</span>
+                    {name === activeEnvironment && <span className="text-xs text-primary">Active</span>}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onManageEnvironments}>Manage environments</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarFooter>
       <SidebarRail />
       <Dialog open={createMode !== null} onOpenChange={(open) => { if (!open) cancelCreate() }}>

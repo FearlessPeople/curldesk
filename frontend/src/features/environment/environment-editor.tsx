@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Check, ChevronDown, Eye, EyeOff, Plus, Save, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, Copy, Eye, EyeOff, Plus, Save, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/button'
 import { Input } from '@/components/input'
@@ -41,6 +41,7 @@ export function EnvironmentEditor({
 }: EnvironmentEditorProps) {
   const [scope, setScope] = useState<EnvironmentScope>('workspace')
   const [search, setSearch] = useState('')
+  const [variableSearch, setVariableSearch] = useState('')
   const [revealed, setRevealed] = useState<Record<string, boolean>>({})
   const [draftVariables, setDraftVariables] = useState<Record<string, string>>({})
   const source = scope === 'workspace' ? workspaceEnvironments : globalEnvironments
@@ -52,6 +53,10 @@ export function EnvironmentEditor({
   const selectedName = source[activeEnvironment] ? activeEnvironment : environmentNames[0] || 'Dev'
   const currentVariables = source[selectedName] || {}
   const currentVariablesKey = JSON.stringify(currentVariables)
+  const visibleVariables = useMemo(() => {
+    const query = variableSearch.trim().toLowerCase()
+    return Object.entries(draftVariables).filter(([key, value]) => !query || `${key} ${value}`.toLowerCase().includes(query))
+  }, [draftVariables, variableSearch])
 
   useEffect(() => {
     setDraftVariables({ ...currentVariables })
@@ -70,6 +75,17 @@ export function EnvironmentEditor({
   const createEnvironment = () => {
     const name = nextEnvironmentName(source)
     updateSource({ ...source, [name]: {} })
+    onSelectEnvironment(name)
+  }
+
+  const duplicateEnvironment = () => {
+    let index = 1
+    let name = `${selectedName} Copy`
+    while (source[name]) {
+      index += 1
+      name = `${selectedName} Copy ${index}`
+    }
+    updateSource({ ...source, [name]: { ...currentVariables } })
     onSelectEnvironment(name)
   }
 
@@ -113,7 +129,10 @@ export function EnvironmentEditor({
       <aside className="flex w-52 shrink-0 flex-col border-r bg-muted/20 p-3">
         <div className="mb-3 flex items-center justify-between px-1">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Environments</span>
-          <Button variant="ghost" size="icon" className="size-7" aria-label="Create environment" onClick={createEnvironment}><Plus className="size-3.5" /></Button>
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" className="h-7 px-2 text-[11px]" onClick={duplicateEnvironment} disabled={!selectedName}><Copy className="mr-1 size-3.5" />Duplicate</Button>
+            <Button variant="ghost" size="icon" className="size-7" aria-label="Create environment" onClick={createEnvironment}><Plus className="size-3.5" /></Button>
+          </div>
         </div>
         <div className="mb-3 grid grid-cols-2 rounded-md bg-muted p-0.5">
           <button type="button" className={`rounded-sm px-2 py-1.5 text-[11px] transition-colors ${scope === 'workspace' ? 'bg-background font-medium text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setScope('workspace')}>Workspace</button>
@@ -141,9 +160,10 @@ export function EnvironmentEditor({
         </header>
         <div className="flex items-center gap-5 border-b px-7"><div className="border-b-2 border-primary py-3 text-xs font-medium text-foreground">Variables <span className="text-muted-foreground">{Object.keys(draftVariables).length}</span></div><div className="py-3 text-xs text-muted-foreground">Secrets</div></div>
         <div className="min-h-0 flex-1 overflow-y-auto px-7 py-5">
+          <Input value={variableSearch} onChange={(event) => setVariableSearch(event.target.value)} placeholder="Search variables..." aria-label="Search variables" className="mb-3 h-8 text-xs" />
           <div className="overflow-hidden rounded-md border">
             <div className="grid grid-cols-[minmax(140px,0.8fr)_minmax(220px,1.5fr)_minmax(100px,0.6fr)_32px] items-center border-b bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground"><span>Name</span><span>Value</span><span>Type</span><span /></div>
-            {Object.entries(draftVariables).map(([key, value], index) => {
+            {visibleVariables.map(([key, value], index) => {
               const sensitive = isSensitiveVariable(key)
               const visible = revealed[key] || !sensitive
               return (
@@ -155,6 +175,7 @@ export function EnvironmentEditor({
                 </div>
               )
             })}
+            {visibleVariables.length === 0 && <div className="px-3 py-5 text-center text-xs text-muted-foreground">No variables found.</div>}
             <div className="grid grid-cols-[minmax(140px,0.8fr)_minmax(220px,1.5fr)_minmax(100px,0.6fr)_32px] items-center gap-2 px-3 py-2"><span className="px-1.5 text-xs text-muted-foreground">Name</span><span className="px-1.5 text-xs text-muted-foreground">Value</span><span className="px-1.5 text-xs text-muted-foreground">Description</span><span /></div>
           </div>
           <div className="mt-4 flex items-center gap-3"><Button variant="default" size="sm" onClick={saveVariables}><Save className="size-3.5" />Save</Button><Button variant="link" size="sm" className="px-0 text-primary" onClick={resetVariables}>Reset</Button><Button variant="outline" size="sm" className="ml-auto" onClick={addVariable}><Plus className="size-3.5" />Add variable</Button>{scope === 'workspace' && <><Button variant="outline" size="sm" onClick={onLoadDotEnv}>Load .env</Button><Button variant="outline" size="sm" onClick={onSaveDotEnv}>Save .env</Button></>}</div>
