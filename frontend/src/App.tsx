@@ -439,6 +439,7 @@ export default function App() {
       setRequests((current) => current.some((request) => request.value === entry.path)
         ? current.map((request) => request.value === entry.path ? { ...request, command } : request)
         : [...current, { value: entry.path, label: entry.name, command, dirty: false, pinned: false }])
+      setActivePage(null)
       setActiveRequest(entry.path)
     } catch (error) {
       console.error('Unable to open curl file', error)
@@ -831,7 +832,7 @@ export default function App() {
               </DropdownMenu>
             </div>
 
-            {requests.length === 0 && (
+            {requests.length === 0 && openPages.length === 0 && (
               <div className="flex min-h-0 flex-1 items-center justify-center px-6">
                 <div className="w-full max-w-md rounded-lg border bg-muted/20 px-8 py-9 text-center shadow-sm">
                   <div className="mx-auto flex size-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -944,16 +945,8 @@ export default function App() {
                                 HTTP {runInfo.status || '—'}
                               </span>
                               <span title="Request duration" className="shrink-0">{runInfo.durationMs} ms</span>
-                              <span title="Request size" className="shrink-0">↑ {formatBytes(runInfo.requestSize)}</span>
                               <span title="Response size" className="shrink-0">↓ {formatBytes(runInfo.responseSize)}</span>
-                              <span title="Response content type" className="hidden max-w-36 truncate sm:inline">{responseContentType}</span>
-                              <span title="DNS lookup time" className="hidden shrink-0 xl:inline">DNS {runInfo.dnsDurationMs} ms</span>
-                              <span title="TCP connect time" className="hidden shrink-0 xl:inline">Connect {runInfo.connectDurationMs} ms</span>
-                              <span title="TLS handshake time" className="hidden shrink-0 xl:inline">TLS {runInfo.tlsDurationMs} ms</span>
-                              <span title="Time to first byte" className="hidden shrink-0 xl:inline">TTFB {runInfo.ttfbMs} ms</span>
-                              <span title="Negotiated HTTP version" className="hidden shrink-0 xl:inline">HTTP/{runInfo.httpVersion || '—'}</span>
-                              <span title="Remote IP address" className="hidden max-w-28 truncate xl:inline">{runInfo.remoteIp || '—'}</span>
-                              {runInfo.redirects > 0 && <span title="Redirect count" className="hidden shrink-0 xl:inline">↪ {runInfo.redirects}</span>}
+                              <span title="Response content type" className="hidden max-w-28 truncate lg:inline">{responseContentType}</span>
                             </div>
                           )}
                           <Tooltip>
