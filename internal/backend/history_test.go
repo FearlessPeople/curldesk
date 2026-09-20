@@ -36,3 +36,22 @@ func TestHistoryRoundTrip(t *testing.T) {
 		t.Fatalf("history file still exists, err = %v", err)
 	}
 }
+
+func TestHistoryLimit(t *testing.T) {
+	service := &WorkspaceService{root: t.TempDir()}
+	if err := os.WriteFile(filepath.Join(service.root, "settings.yaml"), []byte("historyLimit: \"10\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for index := 0; index < 11; index++ {
+		if err := service.RecordHistory("requests/demo.curl", "Dev", "curl https://example.com", "", "", 0, 200, int64(index)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	entries, err := service.ListHistory("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 10 {
+		t.Fatalf("entries = %d, want 10", len(entries))
+	}
+}

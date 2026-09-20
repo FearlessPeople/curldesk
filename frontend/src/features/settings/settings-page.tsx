@@ -11,6 +11,7 @@ type AppSettings = {
   autoSave: boolean
   editorFontSize: number
   wrapOutput: boolean
+  historyLimit: number
   curlPath: string
   requestTimeoutMs: number
   themeColor: string
@@ -102,6 +103,7 @@ export function SettingsPage({
             <div className="flex items-center justify-between gap-4 py-0.5"><span><span className="block text-sm">Accent</span><span className="mt-0.5 block text-xs text-muted-foreground">Choose the primary color for CurlDesk.</span></span><div className="flex items-center gap-2 text-sm"><span className={`size-3 rounded-full ${themeSwatch}`} />{themeLabel}</div></div>
             <div className="space-y-1.5 py-0.5"><div><span className="block text-sm">curl path</span><span className="mt-0.5 block text-xs text-muted-foreground">Leave empty to use curl from the system PATH.</span></div><Input value={settings.curlPath} placeholder="curl" aria-label="curl executable path" onChange={(event) => onSettingsChange((current) => ({ ...current, curlPath: event.target.value }))} /></div>
             <div className="space-y-1.5 py-0.5"><div><span className="block text-sm">Timeout</span><span className="mt-0.5 block text-xs text-muted-foreground">Set milliseconds, or 0 for no application timeout.</span></div><Input type="number" min={0} step={1000} value={settings.requestTimeoutMs} aria-label="Request timeout in milliseconds" onChange={(event) => onSettingsChange((current) => ({ ...current, requestTimeoutMs: Math.max(0, Number(event.target.value) || 0) }))} /></div>
+            <div className="space-y-1.5 py-0.5"><div><span className="block text-sm">History limit</span><span className="mt-0.5 block text-xs text-muted-foreground">Maximum number of recent requests to keep available.</span></div><Input type="number" min={10} max={1000} step={10} value={settings.historyLimit} aria-label="History limit" onChange={(event) => onSettingsChange((current) => ({ ...current, historyLimit: Math.min(1000, Math.max(10, Number(event.target.value) || current.historyLimit)) }))} /></div>
           </div>
         )}
         {section === 'editor' && (

@@ -37,6 +37,7 @@ type AppSettings = {
   autoSave: boolean
   editorFontSize: number
   wrapOutput: boolean
+  historyLimit: number
   curlPath: string
   requestTimeoutMs: number
   themeColor: ThemeColor
@@ -104,7 +105,7 @@ const themeColors: Record<ThemeColor, ThemeDefinition> = {
   },
 }
 
-const defaultSettings: AppSettings = { autoSave: true, editorFontSize: 14, wrapOutput: true, curlPath: '', requestTimeoutMs: 0, themeColor: 'blue', appearance: 'system' }
+const defaultSettings: AppSettings = { autoSave: true, editorFontSize: 14, wrapOutput: true, historyLimit: 100, curlPath: '', requestTimeoutMs: 0, themeColor: 'blue', appearance: 'system' }
 const statusBarActionClass = 'h-7 rounded-md px-2 text-xs text-muted-foreground transition-[background-color,color,box-shadow] hover:bg-primary hover:text-primary-foreground hover:shadow-sm'
 
 function normalizeEnvironmentValues(values: GeneratedEnvironmentValues): Record<string, string> {
@@ -367,6 +368,7 @@ export default function App() {
           ...(stored.autoSave !== undefined ? { autoSave: stored.autoSave === 'true' } : {}),
           ...(stored.editorFontSize ? { editorFontSize: Number(stored.editorFontSize) || current.editorFontSize } : {}),
           ...(stored.wrapOutput !== undefined ? { wrapOutput: stored.wrapOutput === 'true' } : {}),
+          ...(stored.historyLimit !== undefined ? { historyLimit: Math.min(1000, Math.max(10, Number(stored.historyLimit) || current.historyLimit)) } : {}),
           ...(stored.curlPath !== undefined ? { curlPath: stored.curlPath } : {}),
           ...(stored.requestTimeoutMs !== undefined ? { requestTimeoutMs: Math.max(0, Number(stored.requestTimeoutMs) || 0) } : {}),
           ...(stored.themeColor && stored.themeColor in themeColors ? { themeColor: stored.themeColor as ThemeColor } : {}),
@@ -410,6 +412,7 @@ export default function App() {
       autoSave: String(settings.autoSave),
       editorFontSize: String(settings.editorFontSize),
       wrapOutput: String(settings.wrapOutput),
+      historyLimit: String(settings.historyLimit),
       curlPath: settings.curlPath,
       requestTimeoutMs: String(settings.requestTimeoutMs),
       themeColor: settings.themeColor,

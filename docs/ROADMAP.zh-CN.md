@@ -405,7 +405,7 @@ CurlDesk 当前已经具备以下基础：
 - [x] Editor Font Size
 - [ ] Terminal Font
 - [ ] Terminal Font Size
-- [~] History Limit（当前固定保留最近 100 条，设置项待补）
+- [x] History Limit（设置页可配置，默认保留最近 100 条）
 - [ ] Update Channel
 
 ### 23. 安全

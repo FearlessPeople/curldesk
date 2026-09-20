@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -89,10 +90,27 @@ func (w *WorkspaceService) ListHistory(query string) ([]HistoryEntry, error) {
 		return nil, fmt.Errorf("read history: %w", err)
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].CreatedAt > entries[j].CreatedAt })
-	if len(entries) > 100 {
-		entries = entries[:100]
+	limit := w.historyLimit()
+	if len(entries) > limit {
+		entries = entries[:limit]
 	}
 	return entries, nil
+}
+
+func (w *WorkspaceService) historyLimit() int {
+	const defaultLimit = 100
+	settings, err := w.LoadSettings()
+	if err != nil {
+		return defaultLimit
+	}
+	limit, err := strconv.Atoi(settings["historyLimit"])
+	if err != nil || limit < 10 {
+		return defaultLimit
+	}
+	if limit > 1000 {
+		return 1000
+	}
+	return limit
 }
 
 func (w *WorkspaceService) ClearHistory() error {
