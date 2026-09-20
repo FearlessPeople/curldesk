@@ -4,4 +4,4 @@ import * as CurlRunner from "./curlrunner.js";
 import * as UpdateService from "./updateservice.js";
 import * as WorkspaceService from "./workspaceservice.js";
 export { CurlRunner, UpdateService, WorkspaceService };
-export type { CurlDiagnostic, CurlValidation, DiagnosticInfo, HistoryEntry, RunResult, WorkspaceEntry, WorkspaceInfo, WorkspaceSearchResult } from "./models.js";
+export type { CurlDiagnostic, CurlValidation, DiagnosticInfo, HistoryEntry, RunResult, UpdateAsset, UpdateInfo, WorkspaceEntry, WorkspaceInfo, WorkspaceSearchResult } from "./models.js";

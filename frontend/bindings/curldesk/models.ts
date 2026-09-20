@@ -5,6 +5,8 @@ export interface CurlValidation { "valid": boolean; "diagnostics": CurlDiagnosti
 export interface DiagnosticInfo { "os": string; "architecture": string; "curlPath": string; "curlVersion": string; }
 export interface HistoryEntry { "id": string; "createdAt": string; "filePath": string; "environment": string; "command": string; "output": string; "responseHeaders": string; "exitCode": number; "status": number; "durationMs": number; }
 export interface RunResult { "output": string; "exitCode": number; "status": number; "durationMs": number; "requestSize": number; "responseSize": number; "responseHeaders": string; "requestHeaders": string; "dnsDurationMs": number; "connectDurationMs": number; "tlsDurationMs": number; "ttfbMs": number; "remoteIp": string; "httpVersion": string; "redirects": number; }
+export interface UpdateAsset { "name": string; "url": string; }
+export interface UpdateInfo { "version": string; "url": string; "assets": UpdateAsset[] | null; }
 export interface WorkspaceEntry { "path": string; "name": string; "folder": string; "isDir": boolean; "size": number; }
 export interface WorkspaceInfo { "path": string; "name": string; "default": boolean; }
 export interface WorkspaceSearchResult { "path": string; "name": string; "line": number; "snippet": string; }

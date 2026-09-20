@@ -739,15 +739,11 @@ export default function App() {
     setUpdateState('checking')
     setLatestRelease(null)
     try {
-      const response = await fetch('https://api.github.com/repos/FearlessPeople/curldesk/releases/latest', {
-        headers: { Accept: 'application/vnd.github+json' },
-      })
-      if (!response.ok) throw new Error(`GitHub responded with ${response.status}`)
-      const release = await response.json() as { tag_name?: string; html_url?: string; assets?: ReleaseAsset[] }
-      const version = release.tag_name?.trim() || ''
-      const url = release.html_url?.trim() || RELEASES_URL
+      const release = await UpdateService.CheckForUpdates()
+      const version = release.version?.trim() || ''
+      const url = release.url?.trim() || RELEASES_URL
       if (!version) throw new Error('Release version is missing')
-      const asset = selectReleaseAsset(release.assets || [])
+      const asset = selectReleaseAsset((release.assets || []).map((item) => ({ name: item.name, browser_download_url: item.url })))
       setLatestRelease({ version, url, assetName: asset?.name || '', downloadUrl: asset?.url || '' })
       setUpdateState(isNewerVersion(version, __APP_VERSION__) ? 'available' : 'latest')
     } catch (error) {
@@ -1311,7 +1307,7 @@ export default function App() {
             {updateState === 'error' && (
               <div className="flex w-full flex-col gap-3">
                 <p className="text-muted-foreground">Unable to complete the update right now. You can open the release page and download it manually.</p>
-                {latestRelease?.url && <Button variant="outline" onClick={() => void Browser.OpenURL(latestRelease.url)}>Open release page</Button>}
+                <Button variant="outline" onClick={() => void Browser.OpenURL(latestRelease?.url || RELEASES_URL)}>Open release page</Button>
                 <Button variant="outline" onClick={() => void checkForUpdates()}><RefreshCw className="mr-2 size-4" />Try again</Button>
               </div>
             )}
