@@ -21,6 +21,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/dropdown-menu'
 import { Separator } from '@/components/separator'
+import { copyText } from '@/lib/clipboard'
 import { isMacOS, isWindows } from '@/lib/platform'
 import { CurlRunner, UpdateService, WorkspaceService } from '../bindings/curldesk'
 import type { WorkspaceEntry } from '../bindings/curldesk'
@@ -388,7 +389,7 @@ export default function App() {
   const copyOutput = async () => {
     if (!activeResult || !displayOutput || displayOutput.startsWith('No ') || displayOutput.startsWith('Run a curl')) return
     try {
-      await navigator.clipboard.writeText(displayOutput)
+      await copyText(displayOutput)
       setCopiedOutput(true)
       if (copiedTimer.current) clearTimeout(copiedTimer.current)
       copiedTimer.current = window.setTimeout(() => setCopiedOutput(false), 1400)
@@ -410,7 +411,7 @@ export default function App() {
     if (!request) return
     try {
       const resolved = await WorkspaceService.ResolveEnvironment(request.command, activeEnvironment)
-      await navigator.clipboard.writeText(compactCurlCommand(resolved))
+      await copyText(compactCurlCommand(resolved))
       setSuccessMessage('Resolved curl command copied.')
     } catch (error) {
       console.error('Unable to copy resolved curl command', error)

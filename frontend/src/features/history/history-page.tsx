@@ -4,6 +4,7 @@ import { Check, Clock3, Copy, Search, Trash2 } from 'lucide-react'
 import { Button } from '@/components/button'
 import { Input } from '@/components/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/tooltip'
+import { copyText } from '@/lib/clipboard'
 import type { HistoryEntry } from '../../../bindings/curldesk/models'
 
 type HistoryPageProps = { entries: HistoryEntry[]; onSearch: (query: string) => void; onClear: () => void }
@@ -19,7 +20,7 @@ export function HistoryPage({ entries, onSearch, onClear }: HistoryPageProps) {
   const [query, setQuery] = useState('')
   const [copiedID, setCopiedID] = useState('')
   useEffect(() => { const timer = window.setTimeout(() => onSearch(query), 180); return () => window.clearTimeout(timer) }, [onSearch, query])
-  const copyCommand = async (entry: HistoryEntry) => { await navigator.clipboard.writeText(entry.command); setCopiedID(entry.id); window.setTimeout(() => setCopiedID((current) => current === entry.id ? '' : current), 1200) }
+  const copyCommand = async (entry: HistoryEntry) => { await copyText(entry.command); setCopiedID(entry.id); window.setTimeout(() => setCopiedID((current) => current === entry.id ? '' : current), 1200) }
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       <header className="border-b px-8 py-4">
