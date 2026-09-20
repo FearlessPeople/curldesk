@@ -53,6 +53,17 @@ const templates: CurlTemplate[] = [
     notes: [{ option: '?limit=20', description: 'Query parameters are part of the request URL.' }],
   },
   {
+    id: 'sse', category: 'Streaming', title: 'Listen to an SSE stream', summary: 'Keep the connection open and print Server-Sent Events as they arrive.',
+    command: `curl --no-buffer \
+  --url 'https://api.example.com/events' \
+  --header 'accept: text/event-stream' \
+  --header 'cache-control: no-cache'`,
+    notes: [
+      { option: '--no-buffer', description: 'Print each event immediately instead of waiting for curl output buffering.' },
+      { option: 'text/event-stream', description: 'Request a Server-Sent Events response from the server.' },
+    ],
+  },
+  {
     id: 'upload', category: 'Files', title: 'Upload a file', summary: 'Send a local file as multipart form data.',
     command: `curl --request POST \\
   --url 'https://httpbin.org/post' \\
