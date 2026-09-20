@@ -79,27 +79,27 @@ type ThemeDefinition = { label: string; swatch: string; light: ThemePalette; dar
 const themeColors: Record<ThemeColor, ThemeDefinition> = {
   blue: {
     label: 'Blue', swatch: 'bg-blue-500',
-    light: { background: '210 20% 98%', foreground: '222 31% 14%', muted: '210 18% 94%', mutedForeground: '215 12% 45%', border: '214 20% 87%', input: '214 20% 82%', primary: '221 83% 53%', ring: '221 83% 53%', selection: '221 83% 53%', activeLine: '221 83% 53%', sidebarBackground: '0 0% 98%', sidebarForeground: '222 32% 16%', sidebarAccent: '210 40% 96%' },
+    light: { background: '0 0% 100%', foreground: '222 31% 14%', muted: '210 16% 96%', mutedForeground: '215 12% 45%', border: '214 20% 88%', input: '214 20% 82%', primary: '221 83% 53%', ring: '221 83% 53%', selection: '221 83% 53%', activeLine: '221 83% 53%', sidebarBackground: '0 0% 100%', sidebarForeground: '222 31% 20%', sidebarAccent: '210 16% 96%' },
     dark: { background: '222 31% 10%', foreground: '210 20% 96%', muted: '217 25% 17%', mutedForeground: '215 16% 65%', border: '217 20% 25%', input: '217 20% 30%', primary: '221 83% 65%', ring: '221 83% 65%', selection: '221 83% 65%', activeLine: '221 83% 65%', sidebarBackground: '222 31% 12%', sidebarForeground: '210 20% 96%', sidebarAccent: '217 25% 17%' },
   },
   violet: {
     label: 'Violet', swatch: 'bg-violet-500',
-    light: { background: '260 20% 98%', foreground: '250 25% 15%', muted: '260 18% 94%', mutedForeground: '255 12% 45%', border: '260 18% 87%', input: '260 18% 82%', primary: '262 83% 58%', ring: '262 83% 58%', selection: '262 83% 58%', activeLine: '262 83% 58%', sidebarBackground: '260 18% 98%', sidebarForeground: '250 25% 16%', sidebarAccent: '260 35% 96%' },
+    light: { background: '0 0% 100%', foreground: '222 31% 14%', muted: '210 16% 96%', mutedForeground: '215 12% 45%', border: '214 20% 88%', input: '214 20% 82%', primary: '262 83% 58%', ring: '262 83% 58%', selection: '262 83% 58%', activeLine: '262 83% 58%', sidebarBackground: '0 0% 100%', sidebarForeground: '222 31% 20%', sidebarAccent: '210 16% 96%' },
     dark: { background: '250 28% 10%', foreground: '260 20% 96%', muted: '255 24% 17%', mutedForeground: '255 15% 66%', border: '255 20% 26%', input: '255 20% 31%', primary: '262 83% 68%', ring: '262 83% 68%', selection: '262 83% 68%', activeLine: '262 83% 68%', sidebarBackground: '250 28% 12%', sidebarForeground: '260 20% 96%', sidebarAccent: '255 24% 17%' },
   },
   emerald: {
     label: 'Emerald', swatch: 'bg-emerald-500',
-    light: { background: '155 22% 98%', foreground: '155 30% 13%', muted: '155 18% 94%', mutedForeground: '155 12% 43%', border: '155 18% 85%', input: '155 18% 80%', primary: '158 64% 36%', ring: '158 64% 36%', selection: '158 64% 36%', activeLine: '158 64% 36%', sidebarBackground: '155 18% 98%', sidebarForeground: '155 30% 15%', sidebarAccent: '155 35% 95%' },
+    light: { background: '0 0% 100%', foreground: '222 31% 14%', muted: '210 16% 96%', mutedForeground: '215 12% 45%', border: '214 20% 88%', input: '214 20% 82%', primary: '158 64% 36%', ring: '158 64% 36%', selection: '158 64% 36%', activeLine: '158 64% 36%', sidebarBackground: '0 0% 100%', sidebarForeground: '222 31% 20%', sidebarAccent: '210 16% 96%' },
     dark: { background: '160 28% 9%', foreground: '150 20% 95%', muted: '160 24% 16%', mutedForeground: '155 14% 64%', border: '160 20% 24%', input: '160 20% 29%', primary: '158 64% 52%', ring: '158 64% 52%', selection: '158 64% 52%', activeLine: '158 64% 52%', sidebarBackground: '160 28% 11%', sidebarForeground: '150 20% 95%', sidebarAccent: '160 24% 16%' },
   },
   orange: {
     label: 'Orange', swatch: 'bg-orange-500',
-    light: { background: '30 30% 98%', foreground: '25 30% 14%', muted: '30 24% 94%', mutedForeground: '25 13% 45%', border: '30 22% 86%', input: '30 22% 81%', primary: '25 95% 53%', ring: '25 95% 53%', selection: '25 95% 53%', activeLine: '25 95% 53%', sidebarBackground: '30 24% 98%', sidebarForeground: '25 30% 16%', sidebarAccent: '30 40% 95%' },
+    light: { background: '0 0% 100%', foreground: '222 31% 14%', muted: '210 16% 96%', mutedForeground: '215 12% 45%', border: '214 20% 88%', input: '214 20% 82%', primary: '25 95% 53%', ring: '25 95% 53%', selection: '25 95% 53%', activeLine: '25 95% 53%', sidebarBackground: '0 0% 100%', sidebarForeground: '222 31% 20%', sidebarAccent: '210 16% 96%' },
     dark: { background: '25 28% 10%', foreground: '30 20% 96%', muted: '25 24% 17%', mutedForeground: '25 14% 66%', border: '25 20% 26%', input: '25 20% 31%', primary: '25 95% 62%', ring: '25 95% 62%', selection: '25 95% 62%', activeLine: '25 95% 62%', sidebarBackground: '25 28% 12%', sidebarForeground: '30 20% 96%', sidebarAccent: '25 24% 17%' },
   },
   rose: {
     label: 'Rose', swatch: 'bg-rose-500',
-    light: { background: '210 20% 98%', foreground: '222 31% 14%', muted: '210 18% 94%', mutedForeground: '215 12% 45%', border: '214 20% 87%', input: '214 20% 82%', primary: '346 77% 50%', ring: '346 77% 50%', selection: '346 77% 50%', activeLine: '346 77% 50%', sidebarBackground: '0 0% 98%', sidebarForeground: '222 32% 16%', sidebarAccent: '210 40% 96%' },
+    light: { background: '0 0% 100%', foreground: '222 31% 14%', muted: '210 16% 96%', mutedForeground: '215 12% 45%', border: '214 20% 88%', input: '214 20% 82%', primary: '346 77% 50%', ring: '346 77% 50%', selection: '346 77% 50%', activeLine: '346 77% 50%', sidebarBackground: '0 0% 100%', sidebarForeground: '222 31% 20%', sidebarAccent: '210 16% 96%' },
     dark: { background: '222 31% 10%', foreground: '210 20% 96%', muted: '217 25% 17%', mutedForeground: '215 16% 65%', border: '217 20% 25%', input: '217 20% 30%', primary: '346 77% 64%', ring: '346 77% 64%', selection: '346 77% 64%', activeLine: '346 77% 64%', sidebarBackground: '222 31% 12%', sidebarForeground: '210 20% 96%', sidebarAccent: '217 25% 17%' },
   },
 }
@@ -1047,7 +1047,7 @@ export default function App() {
             ))}
             {openPages.map((page) => (
               <TabsContent key={`page:${page}`} value={`page:${page}`} className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
-                {page === 'settings' && <SettingsPage settings={settings} onSettingsChange={(update) => setSettings((current) => ({ ...current, ...update }))} section={settingsSection} onSectionChange={setSettingsSection} themeLabel={theme.label} themeSwatch={theme.swatch} environments={environments} globalEnvironments={globalEnvironments} activeEnvironment={activeEnvironment} onSelectEnvironment={setActiveEnvironment} onWorkspaceChange={saveEnvironments} onGlobalChange={saveGlobalEnvironments} onLoadDotEnv={() => void loadDotEnv()} onSaveDotEnv={() => void saveDotEnv()} historyEntries={historyEntries} onHistorySearch={searchHistory} onClearHistory={() => void clearHistory()} diagnostics={diagnostics} onRefreshDiagnostics={() => void refreshDiagnostics()} />}
+                {page === 'settings' && <SettingsPage settings={settings} onSettingsChange={(update) => setSettings((current) => { const next = update(current); return { ...current, ...next, themeColor: next.themeColor as ThemeColor, appearance: next.appearance as Appearance } })} section={settingsSection} onSectionChange={setSettingsSection} themeLabel={theme.label} themeSwatch={theme.swatch} environments={environments} globalEnvironments={globalEnvironments} activeEnvironment={activeEnvironment} onSelectEnvironment={setActiveEnvironment} onWorkspaceChange={saveEnvironments} onGlobalChange={saveGlobalEnvironments} onLoadDotEnv={() => void loadDotEnv()} onSaveDotEnv={() => void saveDotEnv()} historyEntries={historyEntries} onHistorySearch={searchHistory} onClearHistory={() => void clearHistory()} diagnostics={diagnostics} onRefreshDiagnostics={() => void refreshDiagnostics()} />}
                 {page === 'history' && <HistoryPage entries={historyEntries} onSearch={searchHistory} onClear={() => void clearHistory()} />}
                 {page === 'diagnostics' && <DiagnosticsPage info={diagnostics} onRefresh={refreshDiagnostics} />}
               </TabsContent>

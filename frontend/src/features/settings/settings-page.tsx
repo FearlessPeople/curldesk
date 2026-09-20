@@ -63,35 +63,37 @@ export function SettingsPage({
   diagnostics,
   onRefreshDiagnostics,
 }: SettingsPageProps) {
+  const settingsNavButtonClass = 'h-8 w-full justify-start gap-2 px-2 text-sm hover:bg-primary/10 hover:text-primary data-[active=true]:bg-primary/10 data-[active=true]:font-medium data-[active=true]:text-primary'
+
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
-      <aside className="hidden w-52 shrink-0 border-r bg-muted/20 p-3 md:block">
+      <aside className="hidden w-52 shrink-0 border-r bg-background p-3 md:block">
         <div className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Settings</div>
         <nav className="space-y-1">
-          <Button variant="ghost" className="h-8 w-full justify-start gap-2 px-2 text-sm data-[active=true]:bg-muted" data-active={section === 'general'} onClick={() => onSectionChange('general')}>
+          <Button variant="ghost" className={settingsNavButtonClass} data-active={section === 'general'} onClick={() => onSectionChange('general')}>
             <Settings2 className="size-4" /> General
           </Button>
-          <Button variant="ghost" className="h-8 w-full justify-start gap-2 px-2 text-sm data-[active=true]:bg-muted" data-active={section === 'editor'} onClick={() => onSectionChange('editor')}>
+          <Button variant="ghost" className={settingsNavButtonClass} data-active={section === 'editor'} onClick={() => onSectionChange('editor')}>
             <Code2 className="size-4" /> Editor
           </Button>
-          <Button variant="ghost" className="h-8 w-full justify-start gap-2 px-2 text-sm data-[active=true]:bg-muted" data-active={section === 'environment'} onClick={() => onSectionChange('environment')}>
+          <Button variant="ghost" className={settingsNavButtonClass} data-active={section === 'environment'} onClick={() => onSectionChange('environment')}>
             <Variable className="size-4" /> Environment
           </Button>
           <div className="px-2 pb-0.5 pt-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">Tools</div>
-          <Button variant="ghost" className="h-8 w-full justify-start gap-2 px-2 text-sm data-[active=true]:bg-muted" data-active={section === 'history'} onClick={() => onSectionChange('history')}>
+          <Button variant="ghost" className={settingsNavButtonClass} data-active={section === 'history'} onClick={() => onSectionChange('history')}>
             <History className="size-4" /> History
           </Button>
-          <Button variant="ghost" className="h-8 w-full justify-start gap-2 px-2 text-sm data-[active=true]:bg-muted" data-active={section === 'diagnostics'} onClick={() => onSectionChange('diagnostics')}>
+          <Button variant="ghost" className={settingsNavButtonClass} data-active={section === 'diagnostics'} onClick={() => onSectionChange('diagnostics')}>
             <Activity className="size-4" /> Diagnostics
           </Button>
         </nav>
       </aside>
-      <main className={`min-w-0 flex-1 overflow-y-auto ${section === 'history' || section === 'diagnostics' ? 'p-0' : 'px-8 py-6 pr-12'}`}>
+      <main className={`min-w-0 flex-1 overflow-y-auto ${section === 'history' || section === 'diagnostics' ? 'p-0' : 'px-8 py-5 pr-12'}`}>
         {section === 'general' && (
-          <div className="max-w-2xl space-y-4">
+          <div className="max-w-2xl space-y-3">
             <div>
               <h2 className="text-base font-semibold">General settings</h2>
-              <p className="mt-1.5 text-sm text-muted-foreground">Manage basic CurlDesk workspace behavior.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Manage basic CurlDesk workspace behavior.</p>
             </div>
             <div className="flex items-center justify-between gap-4 py-0.5">
               <span><span className="block text-sm">Auto-save</span><span className="mt-0.5 block text-xs text-muted-foreground">Automatically save curl content to the local workspace.</span></span>
@@ -103,8 +105,8 @@ export function SettingsPage({
           </div>
         )}
         {section === 'editor' && (
-          <div className="max-w-2xl space-y-4">
-            <div><h2 className="text-base font-semibold">Editor settings</h2><p className="mt-1.5 text-sm text-muted-foreground">Adjust how request and response content is displayed.</p></div>
+          <div className="max-w-2xl space-y-3">
+            <div><h2 className="text-base font-semibold">Editor settings</h2><p className="mt-1 text-sm text-muted-foreground">Adjust how request and response content is displayed.</p></div>
             <div className="flex items-center justify-between gap-4 py-0.5"><span><span className="block text-sm">Font size</span><span className="mt-0.5 block text-xs text-muted-foreground">Applied to both request and output editors.</span></span><div className="flex items-center gap-1">{[12, 13, 14, 15, 16, 18].map((size) => <Button key={size} variant={settings.editorFontSize === size ? 'secondary' : 'ghost'} size="sm" className="h-8 min-w-9 px-2" aria-pressed={settings.editorFontSize === size} onClick={() => onSettingsChange((current) => ({ ...current, editorFontSize: size }))}>{size}</Button>)}</div></div>
             <div className="flex items-center justify-between gap-4 py-0.5"><span><span className="block text-sm">Wrap response</span><span className="mt-0.5 block text-xs text-muted-foreground">Wrap long response content to fit the current panel.</span></span><Button variant="outline" size="icon" className={`size-5 shrink-0 rounded-sm p-0 ${settings.wrapOutput ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground' : ''}`} aria-label="Toggle output wrapping" aria-pressed={settings.wrapOutput} onClick={() => onSettingsChange((current) => ({ ...current, wrapOutput: !current.wrapOutput }))}>{settings.wrapOutput && <Check className="size-3.5" />}</Button></div>
           </div>

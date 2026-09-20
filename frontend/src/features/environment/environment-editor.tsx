@@ -125,8 +125,8 @@ export function EnvironmentEditor({
   }
 
   return (
-    <div className="-mx-8 -my-7 flex min-h-[566px] overflow-hidden">
-      <aside className="flex w-52 shrink-0 flex-col border-r bg-muted/20 p-3">
+    <div className="-mx-8 -my-5 flex min-h-[480px] overflow-hidden">
+      <aside className="flex w-52 shrink-0 flex-col border-r bg-background p-3">
         <div className="mb-3 flex items-center justify-between px-1">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Environments</span>
           <div className="flex items-center gap-1">
@@ -135,13 +135,13 @@ export function EnvironmentEditor({
           </div>
         </div>
         <div className="mb-3 grid grid-cols-2 rounded-md bg-muted p-0.5">
-          <button type="button" className={`rounded-sm px-2 py-1.5 text-[11px] transition-colors ${scope === 'workspace' ? 'bg-background font-medium text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setScope('workspace')}>Workspace</button>
-          <button type="button" className={`rounded-sm px-2 py-1.5 text-[11px] transition-colors ${scope === 'global' ? 'bg-background font-medium text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`} onClick={() => setScope('global')}>Global</button>
+          <button type="button" className={`rounded-sm px-2 py-1.5 text-[11px] transition-colors ${scope === 'workspace' ? 'bg-primary/10 font-medium text-primary shadow-sm' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'}`} onClick={() => setScope('workspace')}>Workspace</button>
+          <button type="button" className={`rounded-sm px-2 py-1.5 text-[11px] transition-colors ${scope === 'global' ? 'bg-primary/10 font-medium text-primary shadow-sm' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'}`} onClick={() => setScope('global')}>Global</button>
         </div>
         <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search environments..." aria-label="Search environments" className="mb-3 h-8 bg-background text-xs" />
         <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
           {visibleNames.map((name) => (
-            <button key={name} type="button" className={`flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-sm transition-colors ${selectedName === name ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground hover:bg-muted/70 hover:text-foreground'}`} onClick={() => onSelectEnvironment(name)}>
+            <button key={name} type="button" className={`flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-sm transition-colors ${selectedName === name ? 'bg-primary/10 font-medium text-primary' : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'}`} onClick={() => onSelectEnvironment(name)}>
               <span className="min-w-0 truncate">{name}</span>
               {selectedName === name && <Check className="size-3.5 shrink-0 text-primary" />}
             </button>
