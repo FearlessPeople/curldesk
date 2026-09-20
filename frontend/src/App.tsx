@@ -12,7 +12,7 @@ import { CurlEditor } from '@/components/curl-editor'
 import { OutputEditor } from '@/components/output-editor'
 import { EnvironmentEditor } from '@/features/environment/environment-editor'
 import { HistoryPage } from '@/features/history/history-page'
-import { TutorialsPage, type CurlTutorial } from '@/features/tutorials/tutorials-page'
+import { TemplatesPage, type CurlTemplate } from '@/features/tutorials/tutorials-page'
 import { SettingsPage } from '@/features/settings/settings-page'
 import { CommandPalette, type PaletteCommand } from '@/features/command-palette/command-palette'
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from '@/components/sidebar'
@@ -47,7 +47,7 @@ type AppSettings = {
 
 type ThemeColor = 'blue' | 'violet' | 'emerald' | 'orange' | 'rose'
 type Appearance = 'light' | 'dark' | 'system'
-type PageRoute = 'settings' | 'history' | 'tutorials'
+type PageRoute = 'settings' | 'history' | 'templates'
 type Environments = Record<string, Record<string, string>>
 type GeneratedEnvironmentValues = Record<string, string | undefined> | null | undefined
 type GeneratedEnvironments = Record<string, GeneratedEnvironmentValues> | null | undefined
@@ -604,17 +604,17 @@ export default function App() {
     }
   }
 
-  const createTutorialCurl = async (tutorial: CurlTutorial) => {
+  const createTemplateCurl = async (template: CurlTemplate) => {
     try {
-      const fileName = `tutorial-${tutorial.id}-${Date.now()}.curl`
+      const fileName = `template-${template.id}-${Date.now()}.curl`
       const created = await WorkspaceService.CreateFile('', fileName)
-      await WorkspaceService.SaveFile(created.path, tutorial.command)
+      await WorkspaceService.SaveFile(created.path, template.command)
       await Events.Emit('curldesk:collections-changed')
       await openFile(created)
-      setSuccessMessage('Curl tutorial added to the workspace.')
+      setSuccessMessage('Curl template added to the workspace.')
     } catch (error) {
-      console.error('Unable to create tutorial curl file', error)
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to create tutorial curl file.')
+      console.error('Unable to create template curl file', error)
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to create template curl file.')
     }
   }
 
@@ -896,7 +896,7 @@ export default function App() {
         void WorkspaceService.SaveFile(active.value, active.command).then(() => setRequests((current) => current.map((request) => request.value === active.value ? { ...request, dirty: false } : request)))
       } },
       { id: 'history', label: 'Open request history', description: 'Search previous local curl runs', onSelect: () => { setSettingsSection('history'); openPage('settings') } },
-      { id: 'tutorials', label: 'Open curl tutorials', description: 'Learn common curl commands', onSelect: () => openPage('tutorials') },
+      { id: 'templates', label: 'Open curl templates', description: 'Copy common curl commands', onSelect: () => openPage('templates') },
       { id: 'environment', label: 'Switch environment', description: 'Open environment settings', onSelect: () => { setSettingsSection('environment'); openPage('settings') } },
       { id: 'close-tab', label: 'Close current tab', description: 'Close the active request tab', onSelect: () => activeRequest && closeRequest(activeRequest) },
       { id: 'close-others', label: 'Close other tabs', description: 'Keep the active tab and pinned tabs', onSelect: () => activeRequest && closeOtherRequests(activeRequest) },
@@ -967,7 +967,7 @@ export default function App() {
               <TabsList className="!bg-transparent h-8 min-w-0 flex-1 justify-start gap-1 overflow-x-auto p-0 pr-24">
                 {openPages.map((page) => (
                   <TabsTrigger key={`page:${page}`} value={`page:${page}`} className="group gap-1 px-2 data-[state=active]:ring-1 data-[state=active]:ring-primary/25">
-                    <span>{page === 'settings' ? 'Settings' : page === 'history' ? 'History' : 'Curl tutorials'}</span>
+                    <span>{page === 'settings' ? 'Settings' : page === 'history' ? 'History' : 'Curl templates'}</span>
                     <span role="button" tabIndex={0} aria-label={`Close ${page} page`} className="ml-1 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-slate-200 group-hover:opacity-100 group-data-[state=active]:opacity-70 dark:hover:bg-slate-800" onClick={(event) => { event.stopPropagation(); closePage(page) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); closePage(page) } }}><X className="size-3" /></span>
                   </TabsTrigger>
                 ))}
@@ -1230,7 +1230,7 @@ export default function App() {
               <TabsContent key={`page:${page}`} value={`page:${page}`} className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
                 {page === 'settings' && <SettingsPage settings={settings} onSettingsChange={(update) => setSettings((current) => { const next = update(current); return { ...current, ...next, themeColor: next.themeColor as ThemeColor, appearance: next.appearance as Appearance } })} section={settingsSection} onSectionChange={setSettingsSection} themeLabel={theme.label} themeSwatch={theme.swatch} environments={environments} globalEnvironments={globalEnvironments} activeEnvironment={activeEnvironment} onSelectEnvironment={setActiveEnvironment} onWorkspaceChange={saveEnvironments} onGlobalChange={saveGlobalEnvironments} onLoadDotEnv={() => void loadDotEnv()} onSaveDotEnv={() => void saveDotEnv()} historyEntries={historyEntries} onHistorySearch={searchHistory} onClearHistory={() => void clearHistory()} />}
                 {page === 'history' && <HistoryPage entries={historyEntries} onSearch={searchHistory} onClear={() => void clearHistory()} />}
-                {page === 'tutorials' && <TutorialsPage onCreateCurl={(tutorial) => void createTutorialCurl(tutorial)} />}
+                {page === 'templates' && <TemplatesPage onCreateCurl={(template) => void createTemplateCurl(template)} />}
               </TabsContent>
             ))}
             </Tabs>
@@ -1487,12 +1487,12 @@ export default function App() {
             <Separator orientation="vertical" className="h-3" />
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="sm" className={`${statusBarActionClass} gap-1`} aria-label="Open curl tutorials" onClick={() => openPage('tutorials')}>
+                <Button variant="ghost" size="sm" className={`${statusBarActionClass} gap-1`} aria-label="Open curl templates" onClick={() => openPage('templates')}>
                   <BookOpen className="size-3.5" />
-                  <span>Tutorials</span>
+                  <span>Templates</span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="top">Learn common curl commands</TooltipContent>
+              <TooltipContent side="top">Copy common curl commands</TooltipContent>
             </Tooltip>
           </div>
           <div className="flex items-center gap-1">

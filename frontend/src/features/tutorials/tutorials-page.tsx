@@ -5,7 +5,7 @@ import { Button } from '@/components/button'
 import { Input } from '@/components/input'
 import { copyText } from '@/lib/clipboard'
 
-export type CurlTutorial = {
+export type CurlTemplate = {
   id: string
   category: string
   title: string
@@ -14,7 +14,7 @@ export type CurlTutorial = {
   notes: { option: string; description: string }[]
 }
 
-const tutorials: CurlTutorial[] = [
+const templates: CurlTemplate[] = [
   {
     id: 'get', category: 'Basics', title: 'Make a GET request', summary: 'Fetch a resource and print the response body.',
     command: "curl --url 'https://httpbin.org/get'",
@@ -79,31 +79,27 @@ const tutorials: CurlTutorial[] = [
   },
 ]
 
-type TutorialsPageProps = { onCreateCurl: (tutorial: CurlTutorial) => void }
+type TemplatesPageProps = { onCreateCurl: (template: CurlTemplate) => void }
 
-export function TutorialsPage({ onCreateCurl }: TutorialsPageProps) {
+export function TemplatesPage({ onCreateCurl }: TemplatesPageProps) {
   const [query, setQuery] = useState('')
-  const [selectedID, setSelectedID] = useState(tutorials[0].id)
+  const [selectedID, setSelectedID] = useState(templates[0].id)
   const [copied, setCopied] = useState(false)
-  const selected = tutorials.find((tutorial) => tutorial.id === selectedID) || tutorials[0]
+  const selected = templates.find((template) => template.id === selectedID) || templates[0]
   const groups = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     const filtered = normalized
-      ? tutorials.filter((tutorial) => `${tutorial.title} ${tutorial.summary} ${tutorial.category} ${tutorial.command}`.toLowerCase().includes(normalized))
-      : tutorials
-    return filtered.reduce<Record<string, CurlTutorial[]>>((result, tutorial) => {
-      result[tutorial.category] = [...(result[tutorial.category] || []), tutorial]
+      ? templates.filter((template) => `${template.title} ${template.summary} ${template.category} ${template.command}`.toLowerCase().includes(normalized))
+      : templates
+    return filtered.reduce<Record<string, CurlTemplate[]>>((result, template) => {
+      result[template.category] = [...(result[template.category] || []), template]
       return result
     }, {})
   }, [query])
 
-  const selectTutorial = (tutorial: CurlTutorial) => {
-    setSelectedID(tutorial.id)
-    setCopied(false)
-  }
-
-  const copyCommand = async () => {
-    await copyText(selected.command)
+  const copyTemplate = async (template: CurlTemplate) => {
+    await copyText(template.command)
+    setSelectedID(template.id)
     setCopied(true)
     window.setTimeout(() => setCopied(false), 1400)
   }
@@ -112,28 +108,29 @@ export function TutorialsPage({ onCreateCurl }: TutorialsPageProps) {
     <div className="flex min-h-0 flex-1 overflow-hidden">
       <aside className="hidden w-60 shrink-0 border-r bg-background p-3 md:flex md:flex-col">
         <div className="mb-3 px-2">
-          <div className="flex items-center gap-2 text-sm font-semibold"><Terminal className="size-4 text-primary" /> Curl tutorials</div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">Short, practical examples for everyday curl work.</p>
+          <div className="flex items-center gap-2 text-sm font-semibold"><Terminal className="size-4 text-primary" /> Curl templates</div>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">Copy a ready-to-edit command for everyday curl work.</p>
         </div>
         <div className="relative mb-3">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tutorials" aria-label="Search tutorials" className="h-8 pl-8 text-xs" />
+          <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search templates" aria-label="Search curl templates" className="h-8 pl-8 text-xs" />
         </div>
         <nav className="min-h-0 flex-1 space-y-3 overflow-y-auto">
           {Object.entries(groups).map(([category, items]) => (
             <div key={category}>
               <div className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">{category}</div>
               <div className="space-y-0.5">
-                {items.map((tutorial) => (
-                  <Button key={tutorial.id} variant="ghost" className="h-auto w-full justify-start px-2 py-1.5 text-left text-xs" data-active={selected.id === tutorial.id} onClick={() => selectTutorial(tutorial)}>
-                    <span className={`size-1.5 shrink-0 rounded-full ${selected.id === tutorial.id ? 'bg-primary' : 'bg-border'}`} />
-                    <span className="truncate">{tutorial.title}</span>
+                {items.map((template) => (
+                  <Button key={template.id} variant="ghost" className="h-auto w-full justify-start px-2 py-1.5 text-left text-xs" data-active={selected.id === template.id} onClick={() => void copyTemplate(template)} title="Copy template">
+                    <span className={`size-1.5 shrink-0 rounded-full ${selected.id === template.id ? 'bg-primary' : 'bg-border'}`} />
+                    <span className="truncate">{template.title}</span>
+                    <ClipboardCopy className="ml-auto size-3 shrink-0 opacity-40" />
                   </Button>
                 ))}
               </div>
             </div>
           ))}
-          {Object.keys(groups).length === 0 && <div className="px-2 py-3 text-xs text-muted-foreground">No tutorials found.</div>}
+          {Object.keys(groups).length === 0 && <div className="px-2 py-3 text-xs text-muted-foreground">No templates found.</div>}
         </nav>
       </aside>
 
@@ -141,12 +138,12 @@ export function TutorialsPage({ onCreateCurl }: TutorialsPageProps) {
         <div className="mx-auto max-w-4xl">
           <div className="mb-5 flex items-start justify-between gap-4">
             <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">{selected.category}</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">{selected.category} template</div>
               <h2 className="mt-1 text-lg font-semibold tracking-tight">{selected.title}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{selected.summary}</p>
             </div>
             <div className="hidden shrink-0 items-center gap-2 sm:flex">
-              <Button variant="outline" size="sm" onClick={() => void copyCommand()}><ClipboardCopy className="size-3.5" />{copied ? 'Copied' : 'Copy command'}</Button>
+              <Button variant="outline" size="sm" onClick={() => void copyTemplate(selected)}><ClipboardCopy className="size-3.5" />{copied ? 'Copied' : 'Copy template'}</Button>
               <Button size="sm" onClick={() => onCreateCurl(selected)}><FilePlus2 className="size-3.5" />Create curl file</Button>
             </div>
           </div>
@@ -155,7 +152,7 @@ export function TutorialsPage({ onCreateCurl }: TutorialsPageProps) {
             <pre className="overflow-x-auto whitespace-pre p-4 font-mono text-xs leading-6 text-foreground"><code>{selected.command}</code></pre>
           </div>
           <div className="mt-3 flex gap-2 sm:hidden">
-            <Button variant="outline" size="sm" onClick={() => void copyCommand()}><ClipboardCopy className="size-3.5" />{copied ? 'Copied' : 'Copy command'}</Button>
+            <Button variant="outline" size="sm" onClick={() => void copyTemplate(selected)}><ClipboardCopy className="size-3.5" />{copied ? 'Copied' : 'Copy template'}</Button>
             <Button size="sm" onClick={() => onCreateCurl(selected)}><FilePlus2 className="size-3.5" />Create curl file</Button>
           </div>
 
