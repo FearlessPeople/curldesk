@@ -159,6 +159,6 @@ package-linux:
 	$(MAKE) package GOOS=linux GOARCH=$(or $(LINUX_ARCH),amd64)
 
 package-all:
-	$(MAKE) package-macos
+	$(MAKE) package-macos-universal
 	$(MAKE) package-windows
 	$(MAKE) package-linux
