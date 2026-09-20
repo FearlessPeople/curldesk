@@ -199,7 +199,7 @@ export default function App() {
   const [updateOpen, setUpdateOpen] = useState(false)
   const [updateState, setUpdateState] = useState<'checking' | 'latest' | 'available' | 'error'>('checking')
   const [latestRelease, setLatestRelease] = useState<{ version: string; url: string } | null>(null)
-  const [settingsSection, setSettingsSection] = useState<'general' | 'editor' | 'environment'>('general')
+  const [settingsSection, setSettingsSection] = useState<'general' | 'editor' | 'environment' | 'history' | 'diagnostics'>('general')
   const [settings, setSettings] = useState<AppSettings>(loadSettings)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [environments, setEnvironments] = useState<Environments>({ Dev: {} })
@@ -721,8 +721,8 @@ export default function App() {
         if (!active) return
         void WorkspaceService.SaveFile(active.value, active.command).then(() => setRequests((current) => current.map((request) => request.value === active.value ? { ...request, dirty: false } : request)))
       } },
-      { id: 'history', label: 'Open request history', description: 'Search previous local curl runs', onSelect: () => openPage('history') },
-      { id: 'diagnostics', label: 'Open diagnostics', description: 'Inspect curl and platform information', onSelect: () => openPage('diagnostics') },
+      { id: 'history', label: 'Open request history', description: 'Search previous local curl runs', onSelect: () => { setSettingsSection('history'); openPage('settings') } },
+      { id: 'diagnostics', label: 'Open diagnostics', description: 'Inspect curl and platform information', onSelect: () => { setSettingsSection('diagnostics'); openPage('settings') } },
       { id: 'environment', label: 'Switch environment', description: 'Open environment settings', onSelect: () => { setSettingsSection('environment'); openPage('settings') } },
       { id: 'close-tab', label: 'Close current tab', description: 'Close the active request tab', onSelect: () => activeRequest && closeRequest(activeRequest) },
       { id: 'close-others', label: 'Close other tabs', description: 'Keep the active tab and pinned tabs', onSelect: () => activeRequest && closeOtherRequests(activeRequest) },
@@ -843,7 +843,7 @@ export default function App() {
                   <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
                     <Button size="sm" onClick={() => void createNewCurl()}><FilePlus2 className="size-4" />New curl file</Button>
                     <Button variant="outline" size="sm" onClick={() => setCommandPaletteOpen(true)}>Open commands <kbd className="ml-1 text-[10px] text-muted-foreground">⌘K</kbd></Button>
-                    <Button variant="ghost" size="sm" onClick={() => openPage('history')}><Clock3 className="size-4" />History</Button>
+                    <Button variant="ghost" size="sm" onClick={() => { setSettingsSection('history'); openPage('settings') }}><Clock3 className="size-4" />History</Button>
                   </div>
                 </div>
               </div>
@@ -1032,7 +1032,7 @@ export default function App() {
             ))}
             {openPages.map((page) => (
               <TabsContent key={`page:${page}`} value={`page:${page}`} className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
-                {page === 'settings' && <SettingsPage settings={settings} onSettingsChange={(update) => setSettings((current) => ({ ...current, ...update }))} section={settingsSection} onSectionChange={setSettingsSection} themeLabel={theme.label} themeSwatch={theme.swatch} environments={environments} globalEnvironments={globalEnvironments} activeEnvironment={activeEnvironment} onSelectEnvironment={setActiveEnvironment} onWorkspaceChange={saveEnvironments} onGlobalChange={saveGlobalEnvironments} onLoadDotEnv={() => void loadDotEnv()} onSaveDotEnv={() => void saveDotEnv()} />}
+                {page === 'settings' && <SettingsPage settings={settings} onSettingsChange={(update) => setSettings((current) => ({ ...current, ...update }))} section={settingsSection} onSectionChange={setSettingsSection} themeLabel={theme.label} themeSwatch={theme.swatch} environments={environments} globalEnvironments={globalEnvironments} activeEnvironment={activeEnvironment} onSelectEnvironment={setActiveEnvironment} onWorkspaceChange={saveEnvironments} onGlobalChange={saveGlobalEnvironments} onLoadDotEnv={() => void loadDotEnv()} onSaveDotEnv={() => void saveDotEnv()} historyEntries={historyEntries} onHistorySearch={searchHistory} onClearHistory={() => void clearHistory()} diagnostics={diagnostics} onRefreshDiagnostics={() => void refreshDiagnostics()} />}
                 {page === 'history' && <HistoryPage entries={historyEntries} onSearch={searchHistory} onClear={() => void clearHistory()} />}
                 {page === 'diagnostics' && <DiagnosticsPage info={diagnostics} onRefresh={refreshDiagnostics} />}
               </TabsContent>
@@ -1246,118 +1246,56 @@ export default function App() {
 
       <CommandPalette open={commandPaletteOpen} commands={paletteCommands} onOpenChange={setCommandPaletteOpen} />
 
-        <footer className="flex h-8 shrink-0 items-center gap-3 border-t px-4 text-xs text-muted-foreground">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className={statusBarActionClass} aria-label="Request history" onClick={() => openPage('history')}>History</Button>
-          </TooltipTrigger>
-          <TooltipContent side="top">Request history</TooltipContent>
-        </Tooltip>
-        <Separator orientation="vertical" className="h-3" />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className={statusBarActionClass} aria-label="Open command palette" onClick={() => setCommandPaletteOpen(true)}>Commands</Button>
-          </TooltipTrigger>
-          <TooltipContent side="top">Command palette (⌘K / Ctrl+K)</TooltipContent>
-        </Tooltip>
-        <Separator orientation="vertical" className="h-3" />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="sm" className={statusBarActionClass} aria-label="Open diagnostics" onClick={() => openPage('diagnostics')}>Diagnostics</Button>
-          </TooltipTrigger>
-          <TooltipContent side="top">Open diagnostics</TooltipContent>
-        </Tooltip>
-        <Separator orientation="vertical" className="h-3" />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={statusBarActionClass}
-              aria-label="Check for updates"
-              onClick={() => void checkForUpdates()}
-            >
-              Version {__APP_VERSION__}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="top">Check for updates</TooltipContent>
-        </Tooltip>
-        <Separator orientation="vertical" className="h-3" />
-        <DropdownMenu>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className={`${statusBarActionClass} gap-1`} aria-label={`Theme, current ${theme.label}`}>
-                  <Palette className="size-3.5" />
-                  <span>Theme: {theme.label}</span>
+        <footer className="flex h-8 shrink-0 items-center justify-between border-t px-3 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1">
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm" className={`${statusBarActionClass} gap-1`} aria-label={`Theme, current ${theme.label}`}>
+                      <Palette className="size-3.5" />
+                      <span>Theme</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top">Change theme · {theme.label}</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent side="top" align="start" className="w-36">
+                <DropdownMenuItem onSelect={() => setSettings((current) => ({ ...current, appearance: 'light' }))} className="gap-2"><Sun className="size-3.5" /><span className="flex-1">Light</span>{settings.appearance === 'light' && <Check className="size-3.5" />}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setSettings((current) => ({ ...current, appearance: 'dark' }))} className="gap-2"><Moon className="size-3.5" /><span className="flex-1">Dark</span>{settings.appearance === 'dark' && <Check className="size-3.5" />}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => setSettings((current) => ({ ...current, appearance: 'system' }))} className="gap-2"><Monitor className="size-3.5" /><span className="flex-1">System</span>{settings.appearance === 'system' && <Check className="size-3.5" />}</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                {Object.entries(themeColors).map(([key, color]) => <DropdownMenuItem key={key} onSelect={() => setSettings((current) => ({ ...current, themeColor: key as ThemeColor }))} className="gap-2"><span className={`size-3 rounded-full ${color.swatch}`} /><span className="flex-1">{color.label}</span>{settings.themeColor === key && <Check className="size-3.5" />}</DropdownMenuItem>)}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Separator orientation="vertical" className="h-3" />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" className={`${statusBarActionClass} gap-1`} aria-label="Settings" onClick={() => openPage('settings')}>
+                  <Settings2 className="size-3.5" />
+                  <span>Settings</span>
                 </Button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent side="top">Change theme</TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent side="top" align="start" className="w-36">
-            <DropdownMenuItem onSelect={() => setSettings((current) => ({ ...current, appearance: 'light' }))} className="gap-2">
-              <Sun className="size-3.5" />
-              <span className="flex-1">Light</span>
-              {settings.appearance === 'light' && <Check className="size-3.5" />}
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setSettings((current) => ({ ...current, appearance: 'dark' }))} className="gap-2">
-              <Moon className="size-3.5" />
-              <span className="flex-1">Dark</span>
-              {settings.appearance === 'dark' && <Check className="size-3.5" />}
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => setSettings((current) => ({ ...current, appearance: 'system' }))} className="gap-2">
-              <Monitor className="size-3.5" />
-              <span className="flex-1">System</span>
-              {settings.appearance === 'system' && <Check className="size-3.5" />}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {Object.entries(themeColors).map(([key, color]) => (
-              <DropdownMenuItem
-                key={key}
-                onSelect={() => setSettings((current) => ({ ...current, themeColor: key as ThemeColor }))}
-                className="gap-2"
-              >
-                <span className={`size-3 rounded-full ${color.swatch}`} />
-                <span className="flex-1">{color.label}</span>
-                {settings.themeColor === key && <Check className="size-3.5" />}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Separator orientation="vertical" className="h-3" />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={`${statusBarActionClass} gap-1`}
-              aria-label="Settings"
-              onClick={() => openPage('settings')}
-            >
-              <Settings2 className="size-3.5" />
-              <span>Settings</span>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="top">Settings</TooltipContent>
-        </Tooltip>
-        <Separator orientation="vertical" className="h-3" />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <a
-              href="https://github.com/FearlessPeople/curldesk"
-              aria-label="Open CurlDesk on GitHub"
-              onClick={(event) => {
-                event.preventDefault()
-                void Browser.OpenURL('https://github.com/FearlessPeople/curldesk')
-              }}
-              className={`${statusBarActionClass} flex items-center gap-1`}
-            >
-              <Github className="size-3.5" /> GitHub
-            </a>
-          </TooltipTrigger>
-          <TooltipContent side="top">Open CurlDesk on GitHub</TooltipContent>
-        </Tooltip>
+              </TooltipTrigger>
+              <TooltipContent side="top">Settings</TooltipContent>
+            </Tooltip>
+          </div>
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <a href="https://github.com/FearlessPeople/curldesk" aria-label="Open CurlDesk on GitHub" onClick={(event) => { event.preventDefault(); void Browser.OpenURL('https://github.com/FearlessPeople/curldesk') }} className={`${statusBarActionClass} flex items-center gap-1`}>
+                  <Github className="size-3.5" /> GitHub
+                </a>
+              </TooltipTrigger>
+              <TooltipContent side="top">Open CurlDesk on GitHub</TooltipContent>
+            </Tooltip>
+            <Separator orientation="vertical" className="h-3" />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" className={statusBarActionClass} aria-label="Check for updates" onClick={() => void checkForUpdates()}>v{__APP_VERSION__}</Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Check for updates</TooltipContent>
+            </Tooltip>
+          </div>
         </footer>
         {booting && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background text-foreground">
