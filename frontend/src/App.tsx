@@ -1,4 +1,4 @@
-import { Check, ChevronsDownUp, Clock3, Code2, Copy, Download, FilePlus2, Github, LayoutPanelLeft, LayoutPanelTop, LoaderCircle, MoreHorizontal, Monitor, Moon, Palette, Pin, RefreshCw, Search, Settings2, SlidersHorizontal, Sun, X } from 'lucide-react'
+import { Check, ChevronsDownUp, ClipboardCopy, Clock3, Code2, Copy, Download, FilePlus2, Github, LayoutPanelLeft, LayoutPanelTop, LoaderCircle, MoreHorizontal, Monitor, Moon, Palette, Pin, RefreshCw, Search, Settings2, SlidersHorizontal, Sun, WandSparkles, X } from 'lucide-react'
 import { Browser } from '@wailsio/runtime'
 import { Events } from '@wailsio/runtime'
 import { Window } from '@wailsio/runtime'
@@ -206,6 +206,67 @@ function selectReleaseAsset(assets: ReleaseAsset[]) {
   return candidates.find((asset) => /linux/i.test(asset.name) && /\.tar\.gz$/i.test(asset.name)) || null
 }
 
+function splitCurlCommand(command: string) {
+  const tokens: string[] = []
+  let token = ''
+  let quote = ''
+  let escaped = false
+  const normalized = command.replace(/\\\s*\r?\n/g, ' ')
+  for (const character of normalized) {
+    if (escaped) {
+      token += character
+      escaped = false
+      continue
+    }
+    if (character === '\\' && quote !== "'") {
+      token += character
+      escaped = true
+      continue
+    }
+    if (quote) {
+      token += character
+      if (character === quote) quote = ''
+      continue
+    }
+    if (character === "'" || character === '"') {
+      quote = character
+      token += character
+      continue
+    }
+    if (/\s/.test(character)) {
+      if (token) {
+        tokens.push(token)
+        token = ''
+      }
+      continue
+    }
+    token += character
+  }
+  if (token) tokens.push(token)
+  return tokens
+}
+
+function formatCurlCommand(command: string) {
+  const tokens = splitCurlCommand(command.trim())
+  if (tokens.length <= 1) return tokens.join('')
+  const lines = [tokens[0]]
+  for (let index = 1; index < tokens.length; index += 1) {
+    let line = `  ${tokens[index]}`
+    const next = tokens[index + 1]
+    if (next && !next.startsWith('-')) {
+      line += ` ${next}`
+      index += 1
+    }
+    lines.push(line)
+  }
+  const continuation = isWindows ? ' ^' : ' \\'
+  return lines.map((line, index) => `${line}${index < lines.length - 1 ? continuation : ''}`).join('\n')
+}
+
+function compactCurlCommand(command: string) {
+  return command.replace(/\\\s*\r?\n/g, ' ').replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
 export default function App() {
   const [layout, setLayout] = useState<'vertical' | 'horizontal'>('vertical')
   const [booting, setBooting] = useState(true)
@@ -316,6 +377,27 @@ export default function App() {
       copiedTimer.current = window.setTimeout(() => setCopiedOutput(false), 1400)
     } catch (error) {
       console.error('Unable to copy output', error)
+    }
+  }
+
+  const formatCurrentRequest = () => {
+    const request = requests.find((item) => item.value === activeRequest)
+    if (!request) return
+    const formatted = formatCurlCommand(request.command)
+    updateCommand(request.value, formatted)
+    setSuccessMessage('Curl command formatted.')
+  }
+
+  const copyRawRequest = async () => {
+    const request = requests.find((item) => item.value === activeRequest)
+    if (!request) return
+    try {
+      const resolved = await WorkspaceService.ResolveEnvironment(request.command, activeEnvironment)
+      await navigator.clipboard.writeText(compactCurlCommand(resolved))
+      setSuccessMessage('Resolved curl command copied.')
+    } catch (error) {
+      console.error('Unable to copy resolved curl command', error)
+      setErrorMessage(error instanceof Error ? error.message : 'Unable to copy resolved curl command.')
     }
   }
 
@@ -882,6 +964,24 @@ export default function App() {
                   )
                 })}
               </TabsList>
+              <div className="absolute right-10 flex items-center gap-0.5">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-7" aria-label="Format current curl command" onClick={formatCurrentRequest} disabled={!activeRequest}>
+                      <WandSparkles className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Format curl command</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="size-7" aria-label="Copy resolved curl command" onClick={() => void copyRawRequest()} disabled={!activeRequest}>
+                      <ClipboardCopy className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">Copy resolved curl command</TooltipContent>
+                </Tooltip>
+              </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="absolute right-2 size-7" aria-label="Tab actions"><MoreHorizontal className="size-4" /></Button>
