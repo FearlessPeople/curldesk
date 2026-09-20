@@ -2,7 +2,7 @@ Unicode True
 
 !define APP_NAME "CurlDesk"
 !ifndef APP_VERSION
-  !define APP_VERSION "0.1.1"
+  !define APP_VERSION "0.1.2"
 !endif
 !ifndef EXE_PATH
   !error "EXE_PATH is required"
