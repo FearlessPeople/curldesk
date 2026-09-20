@@ -5,16 +5,18 @@
             <string>APPL</string>
         <key>CFBundleName</key>
             <string>CurlDesk</string>
+        <key>CFBundleDisplayName</key>
+            <string>CurlDesk</string>
         <key>CFBundleExecutable</key>
             <string>CurlDesk</string>
         <key>CFBundleIdentifier</key>
             <string>dev.curldesk.app</string>
         <key>CFBundleVersion</key>
-            <string>0.1.1</string>
+            <string>0.1.2</string>
         <key>CFBundleGetInfoString</key>
             <string>This is a comment</string>
         <key>CFBundleShortVersionString</key>
-            <string>0.1.1</string>
+            <string>0.1.2</string>
         <key>CFBundleIconFile</key>
             <string>CurlDesk</string>
         <key>LSMinimumSystemVersion</key>
