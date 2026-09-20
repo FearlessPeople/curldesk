@@ -476,6 +476,21 @@ func validName(name string) bool {
 	return name != "" && name != "." && name != ".." && filepath.Base(name) == name && !strings.ContainsAny(name, `/\\`)
 }
 
+// validRelativeFileName accepts a workspace-relative file path such as
+// "voice/process", while rejecting absolute paths and traversal segments.
+func validRelativeFileName(name string) bool {
+	if name == "" || strings.HasPrefix(name, "/") || strings.ContainsRune(name, '\\') {
+		return false
+	}
+	parts := strings.Split(name, "/")
+	for _, part := range parts {
+		if !validName(part) {
+			return false
+		}
+	}
+	return true
+}
+
 func validWorkspaceName(name string) bool {
 	return name != "" && name != "." && name != ".." && filepath.Base(name) == name && !strings.ContainsAny(name, `/\\:`)
 }
@@ -539,7 +554,7 @@ func (w *WorkspaceService) CreateFolder(parent, name string) error {
 }
 
 func (w *WorkspaceService) CreateFile(folder, name string) (WorkspaceEntry, error) {
-	if !validName(name) {
+	if !validRelativeFileName(name) {
 		return WorkspaceEntry{}, errors.New("invalid file name")
 	}
 	if filepath.Ext(name) == "" {
@@ -553,6 +568,9 @@ func (w *WorkspaceService) CreateFile(folder, name string) (WorkspaceEntry, erro
 		return WorkspaceEntry{}, err
 	}
 	path := filepath.Join(folderPath, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return WorkspaceEntry{}, fmt.Errorf("create file folder: %w", err)
+	}
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
 		return WorkspaceEntry{}, err
@@ -561,7 +579,8 @@ func (w *WorkspaceService) CreateFile(folder, name string) (WorkspaceEntry, erro
 	if _, err = file.WriteString("curl \"https://example.com\"\n"); err != nil {
 		return WorkspaceEntry{}, err
 	}
-	return WorkspaceEntry{Path: filepath.ToSlash(filepath.Join(folder, name)), Name: name, Folder: filepath.ToSlash(folder)}, nil
+	relative := filepath.Join(folder, name)
+	return WorkspaceEntry{Path: filepath.ToSlash(relative), Name: filepath.Base(name), Folder: filepath.ToSlash(filepath.Dir(relative))}, nil
 }
 
 func (w *WorkspaceService) RenameEntry(relative, name string) error {
@@ -587,6 +606,44 @@ func (w *WorkspaceService) RenameEntry(relative, name string) error {
 		}
 	}
 	return os.Rename(oldPath, filepath.Join(filepath.Dir(oldPath), name))
+}
+
+// MoveEntry moves a workspace entry into another workspace folder.
+func (w *WorkspaceService) MoveEntry(relative, targetFolder string) error {
+	sourcePath, err := w.resolve(relative)
+	if err != nil {
+		return err
+	}
+	if sourcePath == w.root {
+		return errors.New("cannot move workspace root")
+	}
+	targetPath, err := w.resolve(targetFolder)
+	if err != nil {
+		return err
+	}
+	targetInfo, err := os.Stat(targetPath)
+	if err != nil {
+		return err
+	}
+	if !targetInfo.IsDir() {
+		return errors.New("move target must be a folder")
+	}
+	sourceInfo, err := os.Stat(sourcePath)
+	if err != nil {
+		return err
+	}
+	destination := filepath.Join(targetPath, filepath.Base(sourcePath))
+	if sourceInfo.IsDir() {
+		if destination == sourcePath || strings.HasPrefix(targetPath, sourcePath+string(filepath.Separator)) {
+			return errors.New("cannot move a folder into itself")
+		}
+	}
+	if _, err := os.Stat(destination); err == nil {
+		return errors.New("an item with this name already exists in the target folder")
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return os.Rename(sourcePath, destination)
 }
 
 func (w *WorkspaceService) DeleteEntry(relative string) error {

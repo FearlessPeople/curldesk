@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from 'react'
 import { Events } from '@wailsio/runtime'
 import {
   ChevronRight, ChevronsDownUp, ChevronsUpDown, FilePlus2, Folder,
@@ -11,6 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Button } from '@/components/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/dropdown-menu'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/dialog'
+import { Alert } from '@/components/alert'
 import { Input } from '@/components/input'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/tooltip'
 import { WorkspaceSwitcher } from '@/features/workspace/workspace-switcher'
@@ -61,6 +62,10 @@ export function AppSidebar({ onOpenFile, workspace, onWorkspaceChanged, environm
   const [createMode, setCreateMode] = useState<'file' | 'folder' | null>(null)
   const [createParent, setCreateParent] = useState('.')
   const [createName, setCreateName] = useState('')
+  const [createError, setCreateError] = useState('')
+  const [moveError, setMoveError] = useState('')
+  const [draggingPath, setDraggingPath] = useState('')
+  const [dropTargetPath, setDropTargetPath] = useState('')
   const [renameTarget, setRenameTarget] = useState<WorkspaceEntry | null>(null)
   const [renameName, setRenameName] = useState('')
   const [deleteTarget, setDeleteTarget] = useState<WorkspaceEntry | null>(null)
@@ -99,11 +104,13 @@ export function AppSidebar({ onOpenFile, workspace, onWorkspaceChanged, environm
     setCreateMode(mode)
     setCreateParent(parent)
     setCreateName(mode === 'file' ? 'request' : '')
+    setCreateError('')
   }
 
   const cancelCreate = () => {
     setCreateMode(null)
     setCreateName('')
+    setCreateError('')
   }
 
   const submitCreate = async () => {
@@ -120,6 +127,7 @@ export function AppSidebar({ onOpenFile, workspace, onWorkspaceChanged, environm
       cancelCreate()
     } catch (error) {
       console.error('Unable to create collection item', error)
+      setCreateError(error instanceof Error ? error.message : 'Unable to create item.')
     }
   }
 
@@ -154,6 +162,35 @@ export function AppSidebar({ onOpenFile, workspace, onWorkspaceChanged, environm
     setDeleteTarget(null)
   }
 
+  const handleFileDragStart = (event: DragEvent, file: WorkspaceEntry) => {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', file.path)
+    setDraggingPath(file.path)
+    setMoveError('')
+  }
+
+  const handleFileDragEnd = () => {
+    setDraggingPath('')
+    setDropTargetPath('')
+  }
+
+  const handleFolderDrop = async (event: DragEvent, folder: WorkspaceEntry) => {
+    event.preventDefault()
+    const sourcePath = event.dataTransfer.getData('text/plain')
+    setDropTargetPath('')
+    if (!sourcePath || sourcePath === folder.path) return
+    const source = entries.find((entry) => entry.path === sourcePath)
+    if (!source || source.isDir) return
+    try {
+      await WorkspaceService.MoveEntry(source.path, folder.path)
+      await Events.Emit(COLLECTIONS_CHANGED_EVENT)
+      setMoveError('')
+    } catch (error) {
+      console.error('Unable to move collection item', error)
+      setMoveError(error instanceof Error ? error.message : 'Unable to move item.')
+    }
+  }
+
   const toggleFolder = (path: string, open: boolean) => {
     setCollapsedFolders((current) => {
       const next = new Set(current)
@@ -172,7 +209,12 @@ export function AppSidebar({ onOpenFile, workspace, onWorkspaceChanged, environm
     return (
       <Collapsible key={folder.path} open={!collapsedFolders.has(folder.path)} onOpenChange={(open) => toggleFolder(folder.path, open)} className="group/collapsible">
         <SidebarMenuItem>
-          <div className="group/folder-item relative">
+          <div
+            className={`group/folder-item relative rounded-md ${dropTargetPath === folder.path ? 'bg-primary/10 ring-1 ring-primary/40' : ''}`}
+            onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDropTargetPath(folder.path) }}
+            onDragLeave={() => setDropTargetPath((current) => current === folder.path ? '' : current)}
+            onDrop={(event) => void handleFolderDrop(event, folder)}
+          >
             <CollapsibleTrigger asChild>
               <SidebarMenuButton className={`w-full ${depth > 0 ? 'pl-8' : ''}`}>
                 <ChevronRight className="transition-transform group-data-[state=open]/collapsible:rotate-90" />
@@ -214,7 +256,13 @@ export function AppSidebar({ onOpenFile, workspace, onWorkspaceChanged, environm
   }
 
   const renderFile = (file: WorkspaceEntry, depth = 0) => (
-    <SidebarMenuSubItem key={file.path} className="group/file-item relative w-full">
+    <SidebarMenuSubItem
+      key={file.path}
+      draggable
+      onDragStart={(event) => handleFileDragStart(event, file)}
+      onDragEnd={handleFileDragEnd}
+      className={`group/file-item relative w-full ${draggingPath === file.path ? 'opacity-50' : ''}`}
+    >
       <SidebarMenuSubButton asChild className={`w-full justify-start gap-0 ${depth > 0 ? 'pl-8' : ''}`}>
         <button type="button" onClick={() => onOpenFile?.(file)}>
           <span className={`w-8 shrink-0 font-mono text-[11px] font-semibold ${methodColor(methods[file.path] ?? 'GET')}`}>
@@ -288,6 +336,7 @@ export function AppSidebar({ onOpenFile, workspace, onWorkspaceChanged, environm
             {folders.filter((folder) => parentPath(folder.path) === '.').map((folder) => renderFolder(folder))}
             {files.filter((file) => parentPath(file.path) === '.').map((file) => renderFile(file))}
           </SidebarMenu>
+          {moveError && <Alert role="alert" className="mx-2 mt-2 border-destructive/30 bg-destructive/5 text-xs text-destructive">{moveError}</Alert>}
           {entries.length === 0 && <p className="px-2 py-2 text-xs text-muted-foreground">No curl files yet.</p>}
         </SidebarGroup>
       </SidebarContent>
@@ -332,6 +381,7 @@ export function AppSidebar({ onOpenFile, workspace, onWorkspaceChanged, environm
               onChange={(event) => setCreateName(event.target.value)}
               placeholder={createMode === 'folder' ? 'Folder name' : 'Curl file name'}
             />
+            {createError && <Alert role="alert" className="mt-3 border-destructive/30 bg-destructive/5 text-destructive">{createError}</Alert>}
             <DialogFooter className="mt-4">
               <Button type="button" variant="ghost" onClick={cancelCreate}>Cancel</Button>
               <Button type="submit" disabled={!createName.trim()}>Create</Button>

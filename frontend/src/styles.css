@@ -64,7 +64,8 @@ body { min-width: 960px; }
 .resizable-handle:hover, .resizable-handle:focus-visible { background: hsl(var(--muted) / 0.55); }
 .resizable-group[data-panel-group-direction="vertical"] > .resizable-handle { z-index: 20; width: 100%; height: 1px; flex-basis: 1px; cursor: row-resize; background: transparent; overflow: visible; }
 .resizable-group[data-panel-group-direction="horizontal"] > .resizable-handle { width: 6px; height: 100%; cursor: col-resize; border: 0; }
-.resizable-handle > div { pointer-events: none; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 0.25rem; background: hsl(var(--muted)); }
+.resizable-handle > div { pointer-events: none; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 0.25rem; background: hsl(var(--muted)); opacity: 0; transition: opacity 120ms ease; }
+.resizable-handle:hover > div, .resizable-handle:focus-visible > div { opacity: 1; }
 .resizable-group[data-panel-group-direction="vertical"] .resizable-handle > div { width: 2rem; height: 0.75rem; }
 .resizable-group[data-panel-group-direction="vertical"] .resizable-handle > div svg { transform: rotate(90deg); }
 .resizable-group[data-panel-group-direction="horizontal"] .resizable-handle > div { width: 0.75rem; height: 2rem; }

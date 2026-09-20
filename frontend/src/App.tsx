@@ -798,7 +798,7 @@ export default function App() {
             onManageEnvironments={() => { setSettingsSection('environment'); openPage('settings') }}
           />
           <SidebarInset>
-            <Tabs value={activeTab} onValueChange={selectTab} className="flex min-h-0 flex-1 flex-col">
+            <Tabs value={activeTab} onValueChange={selectTab} className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="relative flex h-10 shrink-0 items-center gap-2 border-b px-3">
               <SidebarTrigger />
               <TabsList className="!bg-transparent h-8 min-w-0 flex-1 justify-start gap-1 overflow-x-auto p-0 pr-24">
