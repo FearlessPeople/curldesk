@@ -56,8 +56,8 @@ export function OutputEditor({ value, mode = 'response', fontSize = 14, wrap = t
           '.cm-scroller::-webkit-scrollbar': { width: '8px', height: '8px' },
           '.cm-scroller::-webkit-scrollbar-track': { backgroundColor: 'transparent' },
           '.cm-scroller::-webkit-scrollbar-thumb': { backgroundColor: 'transparent', borderRadius: '999px' },
-          '.cm-scroller:hover::-webkit-scrollbar-thumb': { backgroundColor: 'hsl(215 16% 75%)' },
-          '.cm-scroller:hover': { scrollbarColor: 'hsl(215 16% 75%) transparent' },
+          '.cm-scroller:hover::-webkit-scrollbar-thumb': { backgroundColor: 'hsl(var(--scrollbar-thumb))' },
+          '.cm-scroller:hover': { scrollbarColor: 'hsl(var(--scrollbar-thumb)) transparent' },
           '.cm-scroller::-webkit-scrollbar:horizontal': { display: 'none', height: 0 },
           '.cm-content': {
             boxSizing: 'border-box',

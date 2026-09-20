@@ -27,6 +27,7 @@
   --sidebar-accent-foreground: 222.2 47.4% 11.2%;
   --sidebar-border: 214.3 31.8% 91.4%;
   --sidebar-ring: 215 20.2% 65.1%;
+  --scrollbar-thumb: 215 16% 75%;
 }
 
 .dark {
@@ -71,6 +72,29 @@ body { min-width: 960px; }
 .resizable-group[data-panel-group-direction="horizontal"] .resizable-handle > div { width: 0.75rem; height: 2rem; }
 
 .cm-editor { height: 100%; width: 100%; background: transparent; }
+.cm-editor .cm-scroller::-webkit-scrollbar {
+  background: transparent !important;
+  height: 0 !important;
+}
+.cm-editor .cm-scroller::-webkit-scrollbar-track,
+.cm-editor .cm-scroller::-webkit-scrollbar-track-piece {
+  background: transparent !important;
+}
+.cm-editor .cm-scroller::-webkit-scrollbar:horizontal {
+  display: none !important;
+  height: 0 !important;
+}
+.cm-editor .cm-scroller:hover::-webkit-scrollbar:horizontal {
+  display: block !important;
+  height: 8px !important;
+}
+.cm-editor .cm-scroller:hover::-webkit-scrollbar {
+  height: 8px !important;
+}
+.cm-editor .cm-scroller:hover::-webkit-scrollbar-thumb {
+  background: hsl(var(--scrollbar-thumb)) !important;
+  border-radius: 999px;
+}
 .cm-request-editor .cm-editor.cm-focused .cm-cursor {
   border-left: 2px solid hsl(var(--primary));
   animation: cm-cursor-blink 1s step-end infinite;
