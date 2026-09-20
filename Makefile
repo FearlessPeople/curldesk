@@ -38,7 +38,7 @@ help:
 	  'make package-windows  打包 Windows .exe.zip' \
 	  'make package-windows-installer  生成 Windows 安装程序' \
 	  'make package-linux  打包 Linux .tar.gz' \
-	  'make package-all    依次打包 macOS、Windows、Linux' \
+	  'make package-all    依次打包 macOS、Windows 安装程序、Linux' \
 	  'make run            构建并运行桌面程序' \
 	  'make test           运行 Go 测试' \
 	  'make vet            运行 go vet' \
@@ -160,5 +160,5 @@ package-linux:
 
 package-all:
 	$(MAKE) package-macos-universal
-	$(MAKE) package-windows
+	$(MAKE) package-windows-installer
 	$(MAKE) package-linux

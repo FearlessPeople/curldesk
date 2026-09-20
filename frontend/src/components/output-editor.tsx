@@ -51,7 +51,7 @@ export function OutputEditor({ value, mode = 'response', fontSize = 14, wrap = t
             overflowY: 'auto !important',
             scrollbarWidth: 'thin',
             scrollbarColor: 'transparent transparent',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, "SFMono-Regular", Menlo, monospace',
           },
           '.cm-scroller::-webkit-scrollbar': { width: '8px', height: '8px' },
           '.cm-scroller::-webkit-scrollbar-track': { backgroundColor: 'transparent' },

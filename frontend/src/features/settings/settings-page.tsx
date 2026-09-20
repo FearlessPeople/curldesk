@@ -1,11 +1,10 @@
-import { Activity, Check, Code2, History, Settings2, Variable } from 'lucide-react'
+import { Check, Code2, History, Settings2, Variable } from 'lucide-react'
 
 import { Button } from '@/components/button'
 import { Input } from '@/components/input'
 import { EnvironmentEditor } from '@/features/environment/environment-editor'
 import { HistoryPage } from '@/features/history/history-page'
-import { DiagnosticsPage } from '@/features/diagnostics/diagnostics-page'
-import type { DiagnosticInfo, HistoryEntry } from '../../../bindings/curldesk/models'
+import type { HistoryEntry } from '../../../bindings/curldesk/models'
 
 type AppSettings = {
   autoSave: boolean
@@ -18,7 +17,7 @@ type AppSettings = {
   appearance: string
 }
 
-export type SettingsSection = 'general' | 'editor' | 'environment' | 'history' | 'diagnostics'
+export type SettingsSection = 'general' | 'editor' | 'environment' | 'history'
 type Environments = Record<string, Record<string, string>>
 
 type SettingsPageProps = {
@@ -39,8 +38,6 @@ type SettingsPageProps = {
   historyEntries: HistoryEntry[]
   onHistorySearch: (query: string) => void
   onClearHistory: () => void
-  diagnostics: DiagnosticInfo | null
-  onRefreshDiagnostics: () => void
 }
 
 export function SettingsPage({
@@ -61,8 +58,6 @@ export function SettingsPage({
   historyEntries,
   onHistorySearch,
   onClearHistory,
-  diagnostics,
-  onRefreshDiagnostics,
 }: SettingsPageProps) {
   const settingsNavButtonClass = 'h-8 w-full justify-start gap-2 px-2 text-sm hover:bg-primary/10 hover:text-primary data-[active=true]:bg-primary/10 data-[active=true]:font-medium data-[active=true]:text-primary'
 
@@ -84,12 +79,9 @@ export function SettingsPage({
           <Button variant="ghost" className={settingsNavButtonClass} data-active={section === 'history'} onClick={() => onSectionChange('history')}>
             <History className="size-4" /> History
           </Button>
-          <Button variant="ghost" className={settingsNavButtonClass} data-active={section === 'diagnostics'} onClick={() => onSectionChange('diagnostics')}>
-            <Activity className="size-4" /> Diagnostics
-          </Button>
         </nav>
       </aside>
-      <main className={`min-w-0 flex-1 overflow-y-auto ${section === 'history' || section === 'diagnostics' ? 'p-0' : 'px-8 py-5 pr-12'}`}>
+      <main className={`min-w-0 flex-1 overflow-y-auto ${section === 'history' ? 'p-0' : 'px-8 py-5 pr-12'}`}>
         {section === 'general' && (
           <div className="max-w-2xl space-y-3">
             <div>
@@ -115,7 +107,6 @@ export function SettingsPage({
         )}
         {section === 'environment' && <EnvironmentEditor workspaceEnvironments={environments} globalEnvironments={globalEnvironments} activeEnvironment={activeEnvironment} onSelectEnvironment={onSelectEnvironment} onWorkspaceChange={onWorkspaceChange} onGlobalChange={onGlobalChange} onLoadDotEnv={onLoadDotEnv} onSaveDotEnv={onSaveDotEnv} />}
         {section === 'history' && <HistoryPage entries={historyEntries} onSearch={onHistorySearch} onClear={onClearHistory} />}
-        {section === 'diagnostics' && <DiagnosticsPage info={diagnostics} onRefresh={onRefreshDiagnostics} />}
       </main>
     </div>
   )

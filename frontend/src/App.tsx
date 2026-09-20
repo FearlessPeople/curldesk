@@ -12,7 +12,6 @@ import { CurlEditor } from '@/components/curl-editor'
 import { OutputEditor } from '@/components/output-editor'
 import { EnvironmentEditor } from '@/features/environment/environment-editor'
 import { HistoryPage } from '@/features/history/history-page'
-import { DiagnosticsPage } from '@/features/diagnostics/diagnostics-page'
 import { SettingsPage } from '@/features/settings/settings-page'
 import { CommandPalette, type PaletteCommand } from '@/features/command-palette/command-palette'
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarInset, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from '@/components/sidebar'
@@ -23,9 +22,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/dropdown-menu'
 import { Separator } from '@/components/separator'
 import { isMacOS, isWindows } from '@/lib/platform'
-import { CurlRunner, WorkspaceService } from '../bindings/curldesk'
+import { CurlRunner, UpdateService, WorkspaceService } from '../bindings/curldesk'
 import type { WorkspaceEntry } from '../bindings/curldesk'
-import type { DiagnosticInfo, HistoryEntry, WorkspaceInfo } from '../bindings/curldesk/models'
+import type { HistoryEntry, WorkspaceInfo } from '../bindings/curldesk/models'
 
 type RequestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
 const CURL_STREAM_EVENT = 'curldesk:curl:chunk'
@@ -46,7 +45,7 @@ type AppSettings = {
 
 type ThemeColor = 'blue' | 'violet' | 'emerald' | 'orange' | 'rose'
 type Appearance = 'light' | 'dark' | 'system'
-type PageRoute = 'settings' | 'history' | 'diagnostics'
+type PageRoute = 'settings' | 'history'
 type Environments = Record<string, Record<string, string>>
 type GeneratedEnvironmentValues = Record<string, string | undefined> | null | undefined
 type GeneratedEnvironments = Record<string, GeneratedEnvironmentValues> | null | undefined
@@ -195,13 +194,25 @@ function isNewerVersion(latest: string, current: string) {
   return false
 }
 
+type ReleaseAsset = { name?: string; browser_download_url?: string }
+
+function selectReleaseAsset(assets: ReleaseAsset[]) {
+  const candidates = assets
+    .map((asset) => ({ name: asset.name?.trim() || '', url: asset.browser_download_url?.trim() || '' }))
+    .filter((asset) => asset.name && asset.url)
+
+  if (isWindows) return candidates.find((asset) => /windows/i.test(asset.name) && /setup\.exe$/i.test(asset.name)) || null
+  if (isMacOS) return candidates.find((asset) => /darwin/i.test(asset.name) && /\.zip$/i.test(asset.name)) || null
+  return candidates.find((asset) => /linux/i.test(asset.name) && /\.tar\.gz$/i.test(asset.name)) || null
+}
+
 export default function App() {
   const [layout, setLayout] = useState<'vertical' | 'horizontal'>('vertical')
   const [booting, setBooting] = useState(true)
   const [updateOpen, setUpdateOpen] = useState(false)
-  const [updateState, setUpdateState] = useState<'checking' | 'latest' | 'available' | 'error'>('checking')
-  const [latestRelease, setLatestRelease] = useState<{ version: string; url: string } | null>(null)
-  const [settingsSection, setSettingsSection] = useState<'general' | 'editor' | 'environment' | 'history' | 'diagnostics'>('general')
+  const [updateState, setUpdateState] = useState<'checking' | 'latest' | 'available' | 'installing' | 'error'>('checking')
+  const [latestRelease, setLatestRelease] = useState<{ version: string; url: string; assetName: string; downloadUrl: string } | null>(null)
+  const [settingsSection, setSettingsSection] = useState<'general' | 'editor' | 'environment' | 'history'>('general')
   const [settings, setSettings] = useState<AppSettings>(loadSettings)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [environments, setEnvironments] = useState<Environments>({ Dev: {} })
@@ -220,7 +231,6 @@ export default function App() {
   const [outputSearch, setOutputSearch] = useState('')
   const [collapseOutputSignal, setCollapseOutputSignal] = useState(0)
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([])
-  const [diagnostics, setDiagnostics] = useState<DiagnosticInfo | null>(null)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [requestResults, setRequestResults] = useState<Record<string, RequestResult>>({})
   const [feedback, setFeedback] = useState<FeedbackMessage | null>(null)
@@ -649,15 +659,6 @@ export default function App() {
     }
   }, [])
 
-  const refreshDiagnostics = useCallback(async () => {
-    try {
-      setDiagnostics(await CurlRunner.GetDiagnostics())
-    } catch (error) {
-      console.error('Unable to load diagnostics', error)
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to load diagnostics.')
-    }
-  }, [])
-
   const runRequestBlock = async (command: string, startLine: number) => {
     if (!activeRequest || runStatus === 'running') return
     const filePath = activeRequest
@@ -742,14 +743,34 @@ export default function App() {
         headers: { Accept: 'application/vnd.github+json' },
       })
       if (!response.ok) throw new Error(`GitHub responded with ${response.status}`)
-      const release = await response.json() as { tag_name?: string; html_url?: string }
+      const release = await response.json() as { tag_name?: string; html_url?: string; assets?: ReleaseAsset[] }
       const version = release.tag_name?.trim() || ''
       const url = release.html_url?.trim() || RELEASES_URL
       if (!version) throw new Error('Release version is missing')
-      setLatestRelease({ version, url })
+      const asset = selectReleaseAsset(release.assets || [])
+      setLatestRelease({ version, url, assetName: asset?.name || '', downloadUrl: asset?.url || '' })
       setUpdateState(isNewerVersion(version, __APP_VERSION__) ? 'available' : 'latest')
     } catch (error) {
       console.error('Unable to check for updates', error)
+      setUpdateState('error')
+    }
+  }
+
+  const installUpdate = async () => {
+    const downloadUrl = latestRelease?.downloadUrl
+    if (!downloadUrl) {
+      await Browser.OpenURL(latestRelease?.url || RELEASES_URL)
+      return
+    }
+    if (!isWindows) {
+      await Browser.OpenURL(downloadUrl)
+      return
+    }
+    setUpdateState('installing')
+    try {
+      await UpdateService.InstallUpdate(downloadUrl)
+    } catch (error) {
+      console.error('Unable to install update', error)
       setUpdateState('error')
     }
   }
@@ -764,7 +785,6 @@ export default function App() {
         void WorkspaceService.SaveFile(active.value, active.command).then(() => setRequests((current) => current.map((request) => request.value === active.value ? { ...request, dirty: false } : request)))
       } },
       { id: 'history', label: 'Open request history', description: 'Search previous local curl runs', onSelect: () => { setSettingsSection('history'); openPage('settings') } },
-      { id: 'diagnostics', label: 'Open diagnostics', description: 'Inspect curl and platform information', onSelect: () => { setSettingsSection('diagnostics'); openPage('settings') } },
       { id: 'environment', label: 'Switch environment', description: 'Open environment settings', onSelect: () => { setSettingsSection('environment'); openPage('settings') } },
       { id: 'close-tab', label: 'Close current tab', description: 'Close the active request tab', onSelect: () => activeRequest && closeRequest(activeRequest) },
       { id: 'close-others', label: 'Close other tabs', description: 'Keep the active tab and pinned tabs', onSelect: () => activeRequest && closeOtherRequests(activeRequest) },
@@ -835,7 +855,7 @@ export default function App() {
               <TabsList className="!bg-transparent h-8 min-w-0 flex-1 justify-start gap-1 overflow-x-auto p-0 pr-24">
                 {openPages.map((page) => (
                   <TabsTrigger key={`page:${page}`} value={`page:${page}`} className="group gap-1 px-2 data-[state=active]:ring-1 data-[state=active]:ring-primary/25">
-                    <span>{page === 'settings' ? 'Settings' : page === 'history' ? 'History' : 'Diagnostics'}</span>
+                    <span>{page === 'settings' ? 'Settings' : 'History'}</span>
                     <span role="button" tabIndex={0} aria-label={`Close ${page} page`} className="ml-1 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-slate-200 group-hover:opacity-100 group-data-[state=active]:opacity-70 dark:hover:bg-slate-800" onClick={(event) => { event.stopPropagation(); closePage(page) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); closePage(page) } }}><X className="size-3" /></span>
                   </TabsTrigger>
                 ))}
@@ -1078,9 +1098,8 @@ export default function App() {
             ))}
             {openPages.map((page) => (
               <TabsContent key={`page:${page}`} value={`page:${page}`} className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
-                {page === 'settings' && <SettingsPage settings={settings} onSettingsChange={(update) => setSettings((current) => { const next = update(current); return { ...current, ...next, themeColor: next.themeColor as ThemeColor, appearance: next.appearance as Appearance } })} section={settingsSection} onSectionChange={setSettingsSection} themeLabel={theme.label} themeSwatch={theme.swatch} environments={environments} globalEnvironments={globalEnvironments} activeEnvironment={activeEnvironment} onSelectEnvironment={setActiveEnvironment} onWorkspaceChange={saveEnvironments} onGlobalChange={saveGlobalEnvironments} onLoadDotEnv={() => void loadDotEnv()} onSaveDotEnv={() => void saveDotEnv()} historyEntries={historyEntries} onHistorySearch={searchHistory} onClearHistory={() => void clearHistory()} diagnostics={diagnostics} onRefreshDiagnostics={() => void refreshDiagnostics()} />}
+                {page === 'settings' && <SettingsPage settings={settings} onSettingsChange={(update) => setSettings((current) => { const next = update(current); return { ...current, ...next, themeColor: next.themeColor as ThemeColor, appearance: next.appearance as Appearance } })} section={settingsSection} onSectionChange={setSettingsSection} themeLabel={theme.label} themeSwatch={theme.swatch} environments={environments} globalEnvironments={globalEnvironments} activeEnvironment={activeEnvironment} onSelectEnvironment={setActiveEnvironment} onWorkspaceChange={saveEnvironments} onGlobalChange={saveGlobalEnvironments} onLoadDotEnv={() => void loadDotEnv()} onSaveDotEnv={() => void saveDotEnv()} historyEntries={historyEntries} onHistorySearch={searchHistory} onClearHistory={() => void clearHistory()} />}
                 {page === 'history' && <HistoryPage entries={historyEntries} onSearch={searchHistory} onClear={() => void clearHistory()} />}
-                {page === 'diagnostics' && <DiagnosticsPage info={diagnostics} onRefresh={refreshDiagnostics} />}
               </TabsContent>
             ))}
             </Tabs>
@@ -1277,12 +1296,22 @@ export default function App() {
             {updateState === 'available' && (
               <div className="flex w-full flex-col gap-3">
                 <p>A new version is available: <span className="font-medium">{latestRelease?.version}</span>.</p>
-                <Button onClick={() => void Browser.OpenURL(latestRelease?.url || RELEASES_URL)}>View release</Button>
+                {latestRelease?.assetName && <p className="text-xs text-muted-foreground">Package: {latestRelease.assetName}</p>}
+                <Button onClick={() => void installUpdate()}>
+                  <Download className="mr-2 size-4" />{latestRelease?.downloadUrl && isWindows ? 'Download and install' : 'Download update'}
+                </Button>
+                <Button variant="ghost" onClick={() => void Browser.OpenURL(latestRelease?.url || RELEASES_URL)}>View release notes</Button>
+              </div>
+            )}
+            {updateState === 'installing' && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <LoaderCircle className="size-4 animate-spin" /> Downloading update and preparing installation…
               </div>
             )}
             {updateState === 'error' && (
               <div className="flex w-full flex-col gap-3">
-                <p className="text-muted-foreground">Unable to check for updates right now.</p>
+                <p className="text-muted-foreground">Unable to complete the update right now. You can open the release page and download it manually.</p>
+                {latestRelease?.url && <Button variant="outline" onClick={() => void Browser.OpenURL(latestRelease.url)}>Open release page</Button>}
                 <Button variant="outline" onClick={() => void checkForUpdates()}><RefreshCw className="mr-2 size-4" />Try again</Button>
               </div>
             )}

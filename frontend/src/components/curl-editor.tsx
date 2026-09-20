@@ -130,7 +130,7 @@ export function CurlEditor({ value, fontSize = 14, onChange, onRun, onStop, runn
             overflow: 'auto !important',
             scrollbarWidth: 'none',
             scrollbarColor: 'transparent transparent',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, "SFMono-Regular", Menlo, monospace',
           },
           '.cm-scroller::-webkit-scrollbar': { width: '8px', height: '8px' },
           '.cm-scroller::-webkit-scrollbar-track': { backgroundColor: 'transparent' },

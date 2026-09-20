@@ -22,6 +22,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(&backend.WorkspaceService{}),
 			application.NewService(&backend.CurlRunner{}),
+			application.NewService(&backend.UpdateService{}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),
