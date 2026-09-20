@@ -246,15 +246,32 @@ function splitCurlCommand(command: string) {
   return tokens
 }
 
+function formatCurlArgument(argument: string) {
+  const trimmed = argument.trim()
+  const quote = trimmed[0]
+  if ((quote === "'" || quote === '"') && trimmed.endsWith(quote)) {
+    const body = trimmed.slice(1, -1)
+    try {
+      if (body.trimStart().startsWith('{') || body.trimStart().startsWith('[')) {
+        return `${quote}${JSON.stringify(JSON.parse(body), null, 2)}${quote}`
+      }
+    } catch {
+      // Keep non-JSON shell arguments unchanged.
+    }
+    if (body.includes('\n')) return `${quote}${body.split(/\r?\n/).map((line) => line.trim()).join('\n    ')}${quote}`
+  }
+  return trimmed
+}
+
 function formatCurlCommand(command: string) {
   const tokens = splitCurlCommand(command.trim())
   if (tokens.length <= 1) return tokens.join('')
   const lines = [tokens[0]]
   for (let index = 1; index < tokens.length; index += 1) {
-    let line = `  ${tokens[index]}`
+    let line = `  ${formatCurlArgument(tokens[index])}`
     const next = tokens[index + 1]
     if (next && !next.startsWith('-')) {
-      line += ` ${next}`
+      line += ` ${formatCurlArgument(next)}`
       index += 1
     }
     lines.push(line)
