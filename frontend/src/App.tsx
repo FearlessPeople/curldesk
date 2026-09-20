@@ -56,6 +56,7 @@ type RequestResult = {
   runID?: string
   runningLine?: number | null
 }
+type FeedbackMessage = { tone: 'success' | 'error'; message: string }
 
 type ThemePalette = {
   background: string
@@ -221,7 +222,7 @@ export default function App() {
   const [diagnostics, setDiagnostics] = useState<DiagnosticInfo | null>(null)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [requestResults, setRequestResults] = useState<Record<string, RequestResult>>({})
-  const [errorMessage, setErrorMessage] = useState('')
+  const [feedback, setFeedback] = useState<FeedbackMessage | null>(null)
   const [openPages, setOpenPages] = useState<PageRoute[]>([])
   const [activePage, setActivePage] = useState<PageRoute | null>(null)
   const activeStreams = useRef<Record<string, string>>({})
@@ -240,6 +241,9 @@ export default function App() {
       : (runInfo?.requestHeaders || 'No explicit request headers.')
   const responseContentType = headerValue(runInfo?.headers || '', 'content-type') || (runOutput ? 'text/plain' : '—')
   const activeTab = activePage ? `page:${activePage}` : activeRequest
+
+  const setErrorMessage = (message: string) => setFeedback({ tone: 'error', message })
+  const setSuccessMessage = (message: string) => setFeedback({ tone: 'success', message })
 
   const openPage = (page: PageRoute) => {
     setOpenPages((current) => current.includes(page) ? current : [...current, page])
@@ -377,10 +381,10 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!errorMessage) return
-    const timer = window.setTimeout(() => setErrorMessage(''), 5000)
+    if (!feedback) return
+    const timer = window.setTimeout(() => setFeedback(null), 4000)
     return () => window.clearTimeout(timer)
-  }, [errorMessage])
+  }, [feedback])
 
   useEffect(() => Events.On(CURL_STREAM_EVENT, (event) => {
     const data = event.data as { runId?: string; chunk?: string } | undefined
@@ -553,26 +557,32 @@ export default function App() {
     }, 600)
   }
 
-  const saveEnvironments = (next: Environments) => {
+  const saveEnvironments = async (next: Environments, successMessage = 'Workspace environment saved.') => {
     setEnvironments(next)
-    void WorkspaceService.SaveEnvironments(next).catch((error) => {
+    try {
+      await WorkspaceService.SaveEnvironments(next)
+      setSuccessMessage(successMessage)
+    } catch (error) {
       console.error('Unable to save environments', error)
       setErrorMessage(error instanceof Error ? error.message : 'Unable to save environments.')
-    })
+    }
   }
 
-  const saveGlobalEnvironments = (next: Environments) => {
+  const saveGlobalEnvironments = async (next: Environments) => {
     setGlobalEnvironments(next)
-    void WorkspaceService.SaveGlobalEnvironments(next).catch((error) => {
+    try {
+      await WorkspaceService.SaveGlobalEnvironments(next)
+      setSuccessMessage('Global environment saved.')
+    } catch (error) {
       console.error('Unable to save global environments', error)
       setErrorMessage(error instanceof Error ? error.message : 'Unable to save global environments.')
-    })
+    }
   }
 
   const loadDotEnv = async () => {
     try {
       const dotenv = await WorkspaceService.LoadDotEnv()
-      saveEnvironments({ ...environments, [activeEnvironment]: normalizeEnvironmentValues(dotenv) })
+      await saveEnvironments({ ...environments, [activeEnvironment]: normalizeEnvironmentValues(dotenv) }, '.env loaded into workspace environment.')
     } catch (error) {
       console.error('Unable to load .env', error)
       setErrorMessage(error instanceof Error ? error.message : 'Unable to load .env.')
@@ -582,6 +592,7 @@ export default function App() {
   const saveDotEnv = async () => {
     try {
       await WorkspaceService.SaveDotEnv(environments[activeEnvironment] || {})
+      setSuccessMessage('.env file saved.')
     } catch (error) {
       console.error('Unable to save .env', error)
       setErrorMessage(error instanceof Error ? error.message : 'Unable to save .env.')
@@ -765,9 +776,13 @@ export default function App() {
         </header>
       )}
 
-      {errorMessage && (
-        <Alert className="pointer-events-auto fixed bottom-10 right-4 z-[80] max-w-sm border-destructive/30 bg-background text-destructive shadow-lg">
-          {errorMessage}
+      {feedback && (
+        <Alert
+          aria-live="polite"
+          className={`pointer-events-auto fixed bottom-10 right-4 z-[80] flex max-w-sm items-center gap-2 bg-background shadow-lg ${feedback.tone === 'success' ? 'border-emerald-500/30 text-emerald-700 dark:text-emerald-400' : 'border-destructive/30 text-destructive'}`}
+        >
+          {feedback.tone === 'success' ? <Check className="size-4 shrink-0" /> : <X className="size-4 shrink-0" />}
+          <span>{feedback.message}</span>
         </Alert>
       )}
 
