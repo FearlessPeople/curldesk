@@ -58,6 +58,14 @@ button:disabled, [aria-disabled="true"] { cursor: not-allowed; }
 
 html, body, #root { height: 100%; margin: 0; }
 body { min-width: 960px; }
+.window-maximise-transition { animation: window-maximise-feedback 180ms ease-out; }
+@keyframes window-maximise-feedback {
+  from { opacity: 0.96; transform: scale(0.998); }
+  to { opacity: 1; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .window-maximise-transition { animation: none; }
+}
 .resizable-group { min-height: 0; min-width: 0; overflow: hidden; }
 .resizable-group[data-panel-group-direction="vertical"] { flex-direction: column; }
 .resizable-panel { min-height: 0; min-width: 0; overflow: hidden; }

@@ -22,7 +22,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/dropdown-menu'
 import { Separator } from '@/components/separator'
-import { isMacOS } from '@/lib/platform'
+import { isMacOS, isWindows } from '@/lib/platform'
 import { CurlRunner, WorkspaceService } from '../bindings/curldesk'
 import type { WorkspaceEntry } from '../bindings/curldesk'
 import type { DiagnosticInfo, HistoryEntry, WorkspaceInfo } from '../bindings/curldesk/models'
@@ -224,8 +224,36 @@ export default function App() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [requestResults, setRequestResults] = useState<Record<string, RequestResult>>({})
   const [feedback, setFeedback] = useState<FeedbackMessage | null>(null)
+  const [windowTransitioning, setWindowTransitioning] = useState(false)
   const [openPages, setOpenPages] = useState<PageRoute[]>([])
   const [activePage, setActivePage] = useState<PageRoute | null>(null)
+
+  const toggleWindowMaximise = () => {
+    if (!isWindows) {
+      void Window.ToggleMaximise()
+      return
+    }
+    setWindowTransitioning(true)
+    void Window.ToggleMaximise()
+    window.setTimeout(() => setWindowTransitioning(false), 180)
+  }
+
+  useEffect(() => {
+    if (!isWindows) return
+    let timer: number | undefined
+    const playTransition = () => {
+      setWindowTransitioning(true)
+      if (timer) window.clearTimeout(timer)
+      timer = window.setTimeout(() => setWindowTransitioning(false), 180)
+    }
+    const unsubscribeMaximise = Events.On('windows:WindowMaximise', playTransition)
+    const unsubscribeRestore = Events.On('windows:WindowUnMaximise', playTransition)
+    return () => {
+      unsubscribeMaximise()
+      unsubscribeRestore()
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [])
   const activeStreams = useRef<Record<string, string>>({})
   const saveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -749,7 +777,7 @@ export default function App() {
   return (
     <TooltipProvider delayDuration={0}>
       <div
-        className="flex h-screen flex-col"
+        className={`flex h-screen flex-col ${windowTransitioning ? 'window-maximise-transition' : ''}`}
         style={{
           '--background': palette.background,
           '--foreground': palette.foreground,
@@ -768,11 +796,11 @@ export default function App() {
       >
       {isMacOS && (
         <header
-          className="relative flex h-9 shrink-0 items-center justify-center border-b"
+          className="relative flex h-9 shrink-0 select-none items-center justify-center border-b"
           style={{ '--wails-draggable': 'drag' } as CSSProperties}
-          onDoubleClick={() => void Window.ToggleMaximise()}
+          onDoubleClick={toggleWindowMaximise}
         >
-          <div className="flex items-center gap-2 text-sm font-medium">
+          <div className="flex items-center gap-2 text-sm font-medium no-underline">
             <img src="/appicon.svg" alt="" className="size-5 rounded-md" />
             CurlDesk
           </div>
