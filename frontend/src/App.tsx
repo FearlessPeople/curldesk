@@ -47,7 +47,7 @@ type AppSettings = {
 
 type ThemeColor = 'blue' | 'violet' | 'emerald' | 'orange' | 'rose'
 type Appearance = 'light' | 'dark' | 'system'
-type PageRoute = 'settings' | 'history' | 'templates'
+type PageRoute = 'settings' | 'environments' | 'history' | 'templates'
 type Environments = Record<string, Record<string, string>>
 type GeneratedEnvironmentValues = Record<string, string | undefined> | null | undefined
 type GeneratedEnvironments = Record<string, GeneratedEnvironmentValues> | null | undefined
@@ -897,7 +897,7 @@ export default function App() {
       } },
       { id: 'history', label: 'Open request history', description: 'Search previous local curl runs', onSelect: () => { setSettingsSection('history'); openPage('settings') } },
       { id: 'templates', label: 'Open curl templates', description: 'Copy common curl commands', onSelect: () => openPage('templates') },
-      { id: 'environment', label: 'Switch environment', description: 'Open environment settings', onSelect: () => { setSettingsSection('environment'); openPage('settings') } },
+      { id: 'environment', label: 'Manage environments', description: 'Open workspace and global environments', onSelect: () => openPage('environments') },
       { id: 'close-tab', label: 'Close current tab', description: 'Close the active request tab', onSelect: () => activeRequest && closeRequest(activeRequest) },
       { id: 'close-others', label: 'Close other tabs', description: 'Keep the active tab and pinned tabs', onSelect: () => activeRequest && closeOtherRequests(activeRequest) },
       { id: 'close-all', label: 'Close all tabs', description: 'Stop running requests and close every tab', onSelect: closeAllRequests },
@@ -958,7 +958,7 @@ export default function App() {
             environments={environments}
             activeEnvironment={activeEnvironment}
             onSelectEnvironment={setActiveEnvironment}
-            onManageEnvironments={() => { setSettingsSection('environment'); openPage('settings') }}
+            onManageEnvironments={() => openPage('environments')}
           />
           <SidebarInset>
             <Tabs value={activeTab} onValueChange={selectTab} className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -967,7 +967,7 @@ export default function App() {
               <TabsList className="!bg-transparent h-8 min-w-0 flex-1 justify-start gap-1 overflow-x-auto p-0 pr-24">
                 {openPages.map((page) => (
                   <TabsTrigger key={`page:${page}`} value={`page:${page}`} className="group gap-1 px-2 data-[state=active]:ring-1 data-[state=active]:ring-primary/25">
-                    <span>{page === 'settings' ? 'Settings' : page === 'history' ? 'History' : 'Curl templates'}</span>
+                    <span>{page === 'settings' ? 'Settings' : page === 'environments' ? 'Environments' : page === 'history' ? 'History' : 'Curl templates'}</span>
                     <span role="button" tabIndex={0} aria-label={`Close ${page} page`} className="ml-1 rounded-sm p-0.5 opacity-0 transition-opacity hover:bg-slate-200 group-hover:opacity-100 group-data-[state=active]:opacity-70 dark:hover:bg-slate-800" onClick={(event) => { event.stopPropagation(); closePage(page) }} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); event.stopPropagation(); closePage(page) } }}><X className="size-3" /></span>
                   </TabsTrigger>
                 ))}
@@ -1228,7 +1228,8 @@ export default function App() {
             ))}
             {openPages.map((page) => (
               <TabsContent key={`page:${page}`} value={`page:${page}`} className="mt-0 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden">
-                {page === 'settings' && <SettingsPage settings={settings} onSettingsChange={(update) => setSettings((current) => { const next = update(current); return { ...current, ...next, themeColor: next.themeColor as ThemeColor, appearance: next.appearance as Appearance } })} section={settingsSection} onSectionChange={setSettingsSection} themeLabel={theme.label} themeSwatch={theme.swatch} environments={environments} globalEnvironments={globalEnvironments} activeEnvironment={activeEnvironment} onSelectEnvironment={setActiveEnvironment} onWorkspaceChange={saveEnvironments} onGlobalChange={saveGlobalEnvironments} onLoadDotEnv={() => void loadDotEnv()} onSaveDotEnv={() => void saveDotEnv()} historyEntries={historyEntries} onHistorySearch={searchHistory} onClearHistory={() => void clearHistory()} />}
+                {page === 'settings' && <SettingsPage settings={settings} onSettingsChange={(update) => setSettings((current) => { const next = update(current); return { ...current, ...next, themeColor: next.themeColor as ThemeColor, appearance: next.appearance as Appearance } })} section={settingsSection} onSectionChange={setSettingsSection} themeLabel={theme.label} themeSwatch={theme.swatch} historyEntries={historyEntries} onHistorySearch={searchHistory} onClearHistory={() => void clearHistory()} />}
+                {page === 'environments' && <EnvironmentEditor workspaceEnvironments={environments} globalEnvironments={globalEnvironments} activeEnvironment={activeEnvironment} onSelectEnvironment={setActiveEnvironment} onWorkspaceChange={saveEnvironments} onGlobalChange={saveGlobalEnvironments} onLoadDotEnv={() => void loadDotEnv()} onSaveDotEnv={() => void saveDotEnv()} />}
                 {page === 'history' && <HistoryPage entries={historyEntries} onSearch={searchHistory} onClear={() => void clearHistory()} />}
                 {page === 'templates' && <TemplatesPage onCreateCurl={(template) => void createTemplateCurl(template)} />}
               </TabsContent>

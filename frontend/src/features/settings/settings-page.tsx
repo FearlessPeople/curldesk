@@ -1,8 +1,7 @@
-import { Check, Code2, History, Settings2, Variable } from 'lucide-react'
+import { Check, Code2, History, Settings2 } from 'lucide-react'
 
 import { Button } from '@/components/button'
 import { Input } from '@/components/input'
-import { EnvironmentEditor } from '@/features/environment/environment-editor'
 import { HistoryPage } from '@/features/history/history-page'
 import type { HistoryEntry } from '../../../bindings/curldesk/models'
 
@@ -17,24 +16,16 @@ type AppSettings = {
   appearance: string
 }
 
-export type SettingsSection = 'general' | 'editor' | 'environment' | 'history'
-type Environments = Record<string, Record<string, string>>
+export type SettingsSection = 'general' | 'editor' | 'history'
+type SettingsSectionValue = SettingsSection | 'environment'
 
 type SettingsPageProps = {
   settings: AppSettings
   onSettingsChange: (update: (current: AppSettings) => AppSettings) => void
-  section: SettingsSection
-  onSectionChange: (section: SettingsSection) => void
+  section: SettingsSectionValue
+  onSectionChange: (section: SettingsSectionValue) => void
   themeLabel: string
   themeSwatch: string
-  environments: Environments
-  globalEnvironments: Environments
-  activeEnvironment: string
-  onSelectEnvironment: (name: string) => void
-  onWorkspaceChange: (environments: Environments) => void
-  onGlobalChange: (environments: Environments) => void
-  onLoadDotEnv: () => void
-  onSaveDotEnv: () => void
   historyEntries: HistoryEntry[]
   onHistorySearch: (query: string) => void
   onClearHistory: () => void
@@ -47,14 +38,6 @@ export function SettingsPage({
   onSectionChange,
   themeLabel,
   themeSwatch,
-  environments,
-  globalEnvironments,
-  activeEnvironment,
-  onSelectEnvironment,
-  onWorkspaceChange,
-  onGlobalChange,
-  onLoadDotEnv,
-  onSaveDotEnv,
   historyEntries,
   onHistorySearch,
   onClearHistory,
@@ -71,9 +54,6 @@ export function SettingsPage({
           </Button>
           <Button variant="ghost" className={settingsNavButtonClass} data-active={section === 'editor'} onClick={() => onSectionChange('editor')}>
             <Code2 className="size-4" /> Editor
-          </Button>
-          <Button variant="ghost" className={settingsNavButtonClass} data-active={section === 'environment'} onClick={() => onSectionChange('environment')}>
-            <Variable className="size-4" /> Environment
           </Button>
           <div className="px-2 pb-0.5 pt-4 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">Tools</div>
           <Button variant="ghost" className={settingsNavButtonClass} data-active={section === 'history'} onClick={() => onSectionChange('history')}>
@@ -105,7 +85,6 @@ export function SettingsPage({
             <div className="flex items-center justify-between gap-4 py-0.5"><span><span className="block text-sm">Wrap response</span><span className="mt-0.5 block text-xs text-muted-foreground">Wrap long response content to fit the current panel.</span></span><Button variant="outline" size="icon" className={`size-5 shrink-0 rounded-sm p-0 ${settings.wrapOutput ? 'border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground' : ''}`} aria-label="Toggle output wrapping" aria-pressed={settings.wrapOutput} onClick={() => onSettingsChange((current) => ({ ...current, wrapOutput: !current.wrapOutput }))}>{settings.wrapOutput && <Check className="size-3.5" />}</Button></div>
           </div>
         )}
-        {section === 'environment' && <EnvironmentEditor workspaceEnvironments={environments} globalEnvironments={globalEnvironments} activeEnvironment={activeEnvironment} onSelectEnvironment={onSelectEnvironment} onWorkspaceChange={onWorkspaceChange} onGlobalChange={onGlobalChange} onLoadDotEnv={onLoadDotEnv} onSaveDotEnv={onSaveDotEnv} />}
         {section === 'history' && <HistoryPage entries={historyEntries} onSearch={onHistorySearch} onClear={onClearHistory} />}
       </main>
     </div>
